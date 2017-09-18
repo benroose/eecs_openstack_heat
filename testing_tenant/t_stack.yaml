@@ -1,51 +1,95 @@
-heat_template_version: 2013-05-23
+heat_template_version: newton
  
-description: Template for setting up a private network and running a server
- 
+description: Template for setting up private network and installs RDP cluster with Guacamole gateway
+
 parameters:
+## GLOBAL PARAMS
   image:
     type: string
     label: Image name or ID
-    description: Image to be used for server. Please use an Ubuntu based image.
-    default: rhel-73-cloudimg
+    description: Image to be used for server. Please use a Debian based image.
+    default: debian_server-9-cloudimg
   flavor:
     type: string
     label: Flavor
     description: Type of instance (flavor) to be used on the compute instance.
-    default: m1.small
+    default: m1.medium
   key:
     type: string
     label: Key name
     description: Name of key-pair to be installed on the compute instance.
     default: test
+  cluster_size:
+    type: number
+    label: Cluster size
+    description: Number of instances in rdp cluster.
+    default: 3
   public_net:
     type: string
     label: Public network name or ID
-    description: Public network to attach server to.
+    description: Public network to attach cluster to.
     default: public-971
- 
-resources:
 
+## INSTANCE SPECIFIC PARAMS 
+  cluster_names:
+    type: string
+    label: C-Name
+    description: Hostnames of clustered servers. Use _%index% for unigue numbering.
+    default: csdev-cluster-%index%
+  gw_name:
+    type: string
+    label: GW Name
+    description: Hostname of guacamole gateway created.
+    default: csdev-web-gateway
+  gw_flavor:
+    type: string
+    label: GW Flavor
+    description: Type of instance (flavor) to be used for the guacamole gateway.
+    default: m1.large
+
+resources:
+## GENERATE PRIVATE NETWORK
   network:
     type: lib/private_network.yaml
     properties:
       public_net: { get_param: public_net }
 
-  debian_instance:
-    type: lib/debian_vm2.yaml
+##  GENERATE BACKEND CLUSTER RESOURCE GROUP FOR RDP ACCESS
+  rdp_cluster:
+    type: OS::Heat::ResourceGroup
     properties:
+      count: { get_param: cluster_size }
+      resource_def:
+        type: lib/cfengine_rdp_access_instance.yaml
+        properties:
+          name: { get_param: cluster_names }
+          image: { get_param: image }
+          flavor: { get_param: flavor }
+          key: { get_param: key }
+          private_net: { get_attr: [network, name] }
+          private_subnet_cidr: { get_attr: [network, cidr] }
+
+## GENERATE SINGLE INSTANCE GUACAMOLE GATEWAY AND FEED CLUSTER IPS INTO IT
+  gateway:
+    type: lib/cfengine_web_access_instance.yaml
+    properties:
+      name: { get_param: gw_name }
       image: { get_param: image }
-      flavor: { get_param: flavor }
+      flavor: { get_param: gw_flavor }
       key: { get_param: key }
       private_net: { get_attr: [network, name] }
+      cluster_ips: { get_attr: [rdp_cluster, ip] }
 
   floating_ip:
     type: lib/floating_ip.yaml
     properties:
-      port: { get_attr: [debian_instance, port] }
+      port: { get_attr: [gateway, port] }
       public_net: { get_param: public_net }
 
 outputs:
-  ip:
-    description: The public IP address to access debian_box.
+  gateway_ip:
+    description: The public IP address to access gateway into cluster.
     value: { get_attr: [floating_ip, ip] }
+  gateway_data:
+    description: data values returned from wait_condition.
+    value: { get_attr: ['gateway', 'wc_data'] }

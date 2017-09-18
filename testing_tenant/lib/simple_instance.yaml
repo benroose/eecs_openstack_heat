@@ -1,8 +1,13 @@
-heat_template_version: 2013-05-23
+heat_template_version: newton
 
-description: Template that installs a wordpress server.
+description: Template to create a simple testing instance with ping and SSH access.
 
 parameters:
+  name:
+    type: string
+    label: Instance name
+    description: Name of server instance created.
+    default: testing_box
   image:
     type: string
     label: Image name or ID
@@ -43,9 +48,10 @@ resources:
       security_groups:
         - { get_resource: security_group }
 
-  debian_instance:
+  simple_instance:
     type: OS::Nova::Server
     properties:
+      name: { get_param: name }
       image: { get_param: image }
       flavor: { get_param: flavor }
       key_name: { get_param: key }
@@ -55,10 +61,10 @@ resources:
 outputs:
   name:
     description: Name of the instance.
-    value: { get_attr: [debian_instance, name] }
+    value: { get_attr: [simple_instance, name] }
   ip:
     description: The IP address of the instance.
-    value: { get_attr: [debian_instance, first_address] }
+    value: { get_attr: [simple_instance, first_address] }
   port:
     description: The network port of the instance.
     value: { get_resource: port }

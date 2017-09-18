@@ -1,0 +1,139 @@
+heat_template_version: newton
+
+description: Template to create an instance with ping/SSH and HTTP/HTTPS access. Initial startup installs and bootstraps to cfengine policyhub.
+
+## DEFINE PARAMS OR PULL IN FROM UPSTREAM TEMPLATE
+parameters:
+  name:
+    type: string
+    label: Instance name
+    description: Name of server instance created.
+    default: web-testing-box
+  image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for server. Please use a Debian based image.
+    default: debian_server-9-cloudimg
+  flavor:
+    type: string
+    label: Flavor
+    description: Type of instance (flavor) to be used on the compute instance.
+    default: m1.small
+  key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be installed on the compute instance.
+    default: test
+  private_net:
+    type: string
+    label: Private network name or ID
+    description: Network to attach server to.
+    default: private
+  wc_timeout:
+    type: number
+    description: Timeout for WaitCondition, depends on your image and environment
+    default: 200
+  wc_count:
+    type: number
+    description: Count of total WaitCondition events
+    default: 2
+
+  ## PARAMETERS FOR INSERTING INTO INSTALLER SCRIPT
+
+  policyhub:
+    type: string
+    description: IP address of CFEngine policyhub, defaults to policyhub-dev.
+    default: 156.26.10.17
+
+resources: 
+## DEFINE WAIT CONDITIONS
+  wait_condition:
+    type: OS::Heat::WaitCondition
+    properties:
+      handle: {get_resource: wait_handle}
+      count: {get_param: wc_count}
+      timeout: {get_param: wc_timeout}
+
+  wait_handle:
+    type: OS::Heat::WaitConditionHandle
+
+## DEFINE SECURITY GROUPS
+  security_group_ssh:
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name: ssh_ping_ingress
+        description: SSH and Ping ingress security group
+        rules:
+          - protocol: icmp
+          - protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+  security_group_web:
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name: http_https_ingress
+        description: HTTP and HTTPS web ingress security group
+        rules:
+          - protocol: tcp
+            port_range_min: 80
+            port_range_max: 80
+          - protocol: tcp
+            port_range_min: 443
+            port_range_max: 443
+
+## DEFINE NETWORK PORT AND LINK SECURITY GROUPS
+  port:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param: private_net }
+      security_groups:
+        - { get_resource: security_group_ssh }
+        - { get_resource: security_group_web }
+
+  ## SOFTWARECONFIG UNUSED
+  # cfengine_config:
+  #   type: OS::Heat::SoftwareConfig
+  #   properties:
+  #     group: script
+  #     inputs:
+  #     - name: policyhub_ip
+  #     outputs:
+  #     - name: result
+  #     - name: cf_host_key
+  #     config:
+  #       get_file: cfengine_installer.sh
+
+
+## DEFINE VM SERVER
+  base_server:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: name }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key }
+      networks:
+        - port: { get_resource: port }
+      user_data_format: RAW
+      user_data: 
+        str_replace:
+          template: { get_file: test_script.sh }
+          params:
+            $POLICYHUB_IP: { get_param: policyhub }
+            $wc_notify: { get_attr: ['wait_handle', 'curl_cli'] }
+
+
+## DEFINE OUTPUTS TO UPSTREAM TEMPLATE
+outputs:
+  name:
+    description: Name of the instance.
+    value: { get_attr: [base_server, name] }
+  ip:
+    description: The IP address of the instance.
+    value: { get_attr: [base_server, first_address] }
+  port:
+    description: The network port of the instance.
+    value: { get_resource: port }
+  wc_data:
+    description: data values returned from wait_condition.
+    value: { get_attr: ['wait_condition', 'data'] }
