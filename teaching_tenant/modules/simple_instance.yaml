@@ -1,0 +1,85 @@
+heat_template_version: newton
+
+description: Template to create a simple instance.
+
+## DEFINE PARAMS OR PULL IN FROM UPSTREAM TEMPLATE
+parameters:
+## VIRTUAL MACHINE
+  name:
+    type: string
+    label: Instance name
+    description: Name of server instance created.
+    default: testing-instance
+  image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for server. Please use a Debian based image.
+    default: debian_server-9-cloudimg
+  flavor:
+    type: string
+    label: Flavor
+    description: Type of instance (flavor) to be used on the compute instance.
+    default: m1.small
+  key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be installed on the compute instance.
+    default: test
+
+## NETWORK
+  private_net:
+    type: string
+    label: Private network name or ID
+    description: Network to attach server to.
+    default: private
+  security_groups:
+    type: comma_delimited_list
+    label: Security Group names or IDs
+    description: SG names or IDs to associate with port.
+
+## METADATA
+  cluster_ips:
+    type: comma_delimited_list
+    label: cluster ip addresses
+    description: Comma separated list of IP addresses in the cluster pushed from upstream template.
+    default: test_ip1,test_ip2,test_ip3
+  ballastd_ip:
+    type: string
+    label: ballastd server ip address
+    description: IP address of ballast server in the cluster pushed from upstream template.
+    default: ballastd_test
+
+resources: 
+
+## DEFINE NETWORK PORTS AND LINK SECURITY GROUPS
+  primary_port:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param: private_net }
+      security_groups: { get_param: security_groups }
+
+## DEFINE VM SERVER
+  base_server:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: name }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key }
+      networks:
+        - port: { get_resource: primary_port }
+      metadata:
+        cluster_ips: { get_param: cluster_ips }
+        ballastd_ip: { get_param: ballastd_ip }
+
+## DEFINE OUTPUTS TO UPSTREAM TEMPLATE
+outputs:
+  name:
+    description: Name of the instance.
+    value: { get_attr: [base_server, name] }
+  ip:
+    description: The IP address of the instance.
+    value: { get_attr: [base_server, first_address] }
+  port:
+    description: The network port of the instance.
+    value: { get_resource: primary_port }

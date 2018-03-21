@@ -1,6 +1,6 @@
 heat_template_version: newton
 
-description: Template to create an instance. Initial startup installs and bootstraps to cfengine policyhub.
+description: Template to create an instance with ping/SSH and HTTP/HTTPS access. Initial startup installs and bootstraps to cfengine policyhub.
 
 ## DEFINE PARAMS OR PULL IN FROM UPSTREAM TEMPLATE
 parameters:
@@ -9,12 +9,7 @@ parameters:
     type: string
     label: Instance name
     description: Name of server instance created.
-    default: cfe-instance
-  cluster_type:
-    type: string
-    label: cluster access type
-    description: Access type for entire cluster.
-    default: test
+    default: web-instance
   image:
     type: string
     label: Image name or ID
@@ -37,50 +32,36 @@ parameters:
     label: Private network name or ID
     description: Network to attach server to.
     default: private
-  private_subnet:
-    type: string
-    label: Private subnet name or ID
-    description: Subnet to attach server to.
-    default: private
   security_groups:
     type: comma_delimited_list
     label: Security Group names or IDs
     description: list of security groups to association with port.
-  ip_address:
-    type: string
-    label: Defined IP Address
-    description: user defined fixed ip address to association with port.
-    default: dynamic_ip
+  # security_group_ssh:
+  #   type: string
+  #   label: Security Group name or ID
+  #   description: SG ID for SSH/PING ingress to associate with port.
+  # security_group_rdp:
+  #   type: string
+  #   label: Security Group name or ID
+  #   description: SG ID for RDP ingress from private network only to associate with port.
 
 ## METADATA
-  ballastd_ip:
-    type: string
-    label: ballast server ip address
-    description: IP address of ballast server host in the cluster pushed from upstream template.
-    default: no_ballast
-
-
   # cluster_ips:
   #   type: comma_delimited_list
   #   label: cluster ip addresses
   #   description: Comma separated list of IP addresses in the cluster pushed from upstream template.
-  #   default: no_metadata
-  # gateway_ip:
-  #   type: string
-  #   label: gateway server ip address
-  #   description: IP address of web gateway host in the cluster pushed from upstream template.
-  #   default: no_metadata
-  # bastion_ip:
-  #   type: string
-  #   label: bastion server ip address
-  #   description: IP address of ssh bastion host in the cluster pushed from upstream template.
-  #   default: no_metadata
+  #   default: testitem1,testitem2,testitem3
+  ballastd_ip:
+    type: string
+    label: ballastd server ip address
+    description: IP address of ballast server in the cluster pushed from upstream template.
+    default: ballastd_test
 
 ## WAIT CONDITIONS
   wc_timeout:
     type: number
     description: Timeout for WaitCondition, depends on your image and environment
-    default: 600
+    default: 300
   wc_count:
     type: number
     description: Count of total WaitCondition events
@@ -91,15 +72,6 @@ parameters:
     type: string
     description: IP address of CFEngine policyhub, defaults to policyhub-dev.
     default: 156.26.10.17
-
-conditions:
-  use_dynamic_ip: { equals: [{get_param: ip_address}, 'dynamic_ip'] }
-
-  # use_fixed_ip:
-  #   not:
-  #     equals:
-  #       - get_param: fixed_ip
-  #       - dynamic_ip
 
 resources: 
 
@@ -115,24 +87,11 @@ resources:
     type: OS::Heat::WaitConditionHandle
 
 ## DEFINE NETWORK PORTS AND LINK TO SECURITY GROUPS
-  dynamic_ip_port:
-    condition: use_dynamic_ip
+  rdp_port:
     type: OS::Neutron::Port
     properties:
       network: { get_param: private_net }
       security_groups: { get_param: security_groups }
-
-  fixed_ip_port:
-    condition: { not: use_dynamic_ip }
-    type: OS::Neutron::Port
-    properties:
-      network: { get_param: private_net }
-      security_groups: { get_param: security_groups }
-      fixed_ips:
-        - subnet: { get_param: private_subnet }
-          ip_address: { get_param: ip_address }
-
-# NEED TO ADD A FIXED IP CONDITIONAL
 
 ## DEFINE VM SERVER
   base_server:
@@ -143,11 +102,8 @@ resources:
       flavor: { get_param: flavor }
       key_name: { get_param: key }
       networks:
-        - port: { if: ["use_dynamic_ip", {get_resource: dynamic_ip_port}, {get_resource: fixed_ip_port}] }
-        # - port: {get_resource: fixed_ip_port}
+        - port: { get_resource: rdp_port }
       metadata:
-        cluster_name: { get_param: 'OS::stack_name' }
-        cluster_type: { get_param: cluster_type }
         ballastd_ip: { get_param: ballastd_ip }
       user_data_format: RAW
       user_data: 
@@ -167,7 +123,7 @@ outputs:
     value: { get_attr: [base_server, first_address] }
   port:
     description: The network port of the instance.
-    value: { if: [use_dynamic_ip, {get_resource: dynamic_ip_port}, {get_resource: fixed_ip_port}] }
+    value: { get_resource: port }
   wc_data:
     description: data values returned from wait_condition.
     value: { get_attr: ['wait_condition', 'data'] }

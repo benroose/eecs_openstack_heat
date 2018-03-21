@@ -1,0 +1,75 @@
+heat_template_version: newton
+
+description: Template to create an instance with ping/SSH and HTTP/HTTPS access. Initial startup installs and bootstraps to cfengine policyhub.
+
+## DEFINE PARAMS OR PULL IN FROM UPSTREAM TEMPLATE
+parameters:
+## VIRTUAL MACHINE
+  name:
+    type: string
+    label: Instance name
+    description: Name of server instance created.
+    default: web-instance
+  image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for server. Please use a Debian based image.
+    default: debian_server-9-cloudimg
+  flavor:
+    type: string
+    label: Flavor
+    description: Type of instance (flavor) to be used on the compute instance.
+    default: m1.small
+  key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be installed on the compute instance.
+    default: test
+
+## NETWORK
+  private_net:
+    type: string
+    label: Private network name or ID
+    description: Network to attach server to.
+    default: private
+  security_group_ssh:
+    type: string
+    label: Security Group name or ID
+    description: SG ID for SSH/PING ingress to associate with port.
+  security_group_web:
+    type: string
+    label: Security Group name or ID
+    description: SG ID for HTTP/HTTPS ingress to associate with port.
+
+resources: 
+## DEFINE NETWORK PORTS AND LINK SECURITY GROUPS
+  web_port:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param: private_net }
+      security_groups:
+        - { get_param: security_group_ssh }
+        - { get_param: security_group_web }
+
+## DEFINE VM SERVER
+  base_server:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: name }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key }
+      networks:
+        - port: { get_resource: web_port }
+
+## DEFINE OUTPUTS TO UPSTREAM TEMPLATE
+outputs:
+  name:
+    description: Name of the instance.
+    value: { get_attr: [base_server, name] }
+  ip:
+    description: The IP address of the instance.
+    value: { get_attr: [base_server, first_address] }
+  port:
+    description: The network port of the instance.
+    value: { get_resource: web_port }
