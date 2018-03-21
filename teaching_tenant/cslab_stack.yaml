@@ -1,0 +1,165 @@
+heat_template_version: newton
+ 
+description: Template for setting up private network and install cluster with Guacamole gateway and ssh bastion
+
+parameters:
+## GLOBAL PARAMS
+  image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for all nodes. Please use a Debian based image.
+    default: debian_server-9-cloudimg
+  key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be installed on all nodes.
+    default: test
+  cluster_size:
+    type: number
+    label: Cluster size
+    description: Number of node instances in cluster.
+    default: 17
+  public_net:
+    type: string
+    label: Public network name or ID
+    description: Public network to attach cluster.
+    default: public-971
+
+## NOTE: there seems to be a metadata limitation for comma_delimited_list variables, which allows for a max list of 17 ip addresses (as used for cluster_ips). Thus, trying to keep the cluster size down to 16 and instead scaling up the VM instance flavor size.
+
+## INSTANCE SPECIFIC PARAMS 
+  node_name:
+    type: string
+    label: Cluster Node Names
+    description: Hostnames of clustered node servers. Use _%index% for unigue numbering.
+    default: cslab-node-%index%
+  node_flavor:
+    type: string
+    label: Node Flavor
+    description: Type of instance (flavor) to be used for each cluster backend node.
+    default: m1.large.w.swap
+  gateway_name:
+    type: string
+    label: Gateway Name
+    description: Hostname of gateway created.
+    default: cslab-gateway
+  gateway_flavor:
+    type: string
+    label: Gateway Flavor
+    description: Type of instance (flavor) to be used for the gateway.
+    default: m1.large
+  bastion_name:
+    type: string
+    label: Bastion Name
+    description: Hostname of ballast SSH bastion created.
+    default: cslab-bastion
+  bastion_flavor:
+    type: string
+    label: Bastion Flavor
+    description: Type of instance (flavor) to be used for the SSH bastion.
+    default: m1.large
+  bastion_fixed_ip:
+    type: string
+    label: Bastion IP
+    description: Fixed IP address to be used for the SSH bastion.
+    default: 10.10.10.24
+
+resources:
+## GENERATE PRIVATE NETWORK
+  network:
+    type: Mod::EECS::PrivateNet
+    properties:
+      public_net: { get_param: public_net }
+
+## GENERATE SECURITY GROUPS
+  security_groups:
+    type: Mod::EECS::SecurityGroups
+    properties:
+      private_subnet_cidr: { get_attr: [network, cidr] }
+
+##  GENERATE BACKEND CLUSTER RESOURCE GROUP FOR RDP ACCESS
+  cluster_nodes:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: { get_param: cluster_size }
+      resource_def:
+        type: Mod::EECS::CFEInstance
+        # type: Mod::EECS::SimpleInstance
+        properties:
+          name: { get_param: node_name }
+          # NOT USED name: { str_replace: { params: { __name_prefix__: { get_param: "OS::stack_name" } }, template: __name_prefix__-node-%index% } }
+          flavor: { get_param: node_flavor }
+          image: { get_param: image }
+          key: { get_param: key }
+          private_net: { get_attr: [network, name] }
+          bastion_ip: { get_param: bastion_fixed_ip }
+          security_groups:
+           - { get_attr: [ security_groups, sg_ingress_ssh_prinet ] }
+           - { get_attr: [ security_groups, sg_ingress_rdp_prinet ] }
+  
+## GENERATE SINGLE INSTANCE GUACAMOLE GATEWAY AND FEED CLUSTER IPS INTO IT
+## using a generic VMInstance with ssh/web security groups and CFE bootstrapping
+## hostname is the only defining element for CFE to configure this node as a guacamole gateway
+  web_gateway:
+    depends_on: cluster_nodes
+    type: Mod::EECS::CFEInstance
+    # type: Mod::EECS::SimpleInstance
+    properties:
+      name: { get_param: gateway_name }
+      # NOT USED name: { str_replace: { params: { __name_prefix__: { get_param: "OS::stack_name" } }, template: __name_prefix__-guac-gw } }
+      flavor: { get_param: gateway_flavor }
+      image: { get_param: image }
+      key: { get_param: key }
+      private_net: { get_attr: [network, name] }
+      cluster_ips: { get_attr: [cluster_nodes, ip] }
+      bastion_ip: { get_param: bastion_fixed_ip }
+      security_groups:
+        - { get_attr: [ security_groups, sg_ingress_ssh_prinet ] }
+        - { get_attr: [ security_groups, sg_ingress_web ] }
+
+  web_floating_ip:
+    type: Mod::EECS::FloatingIp
+    properties:
+      port: { get_attr: [web_gateway, port] }
+      public_net: { get_param: public_net }
+
+## GENERATE SINGLE INSTANCE BALLAST BASTION/JUMP-HOST WITH FIXED_IP
+## NOTE: using a generic VMInstance with ssh security groups and CFE bootstrapping
+## hostname is the only defining element for CFE to configure this node as a ballast bastion
+  ssh_bastion:
+    depends_on: cluster_nodes
+    type: Mod::EECS::CFEInstance
+    # type: Mod::EECS::SimpleInstance
+    properties:
+      name: { get_param: bastion_name }
+      # NOT USED name: { str_replace: { params: { __name_prefix__: { get_param: "OS::stack_name" } }, template: __name_prefix__-bastion } }
+      flavor: { get_param: bastion_flavor }
+      image: { get_param: image }
+      key: { get_param: key }
+      private_net: { get_attr: [network, name] }
+      port_fixed_ip: { get_param: bastion_fixed_ip }
+      cluster_ips: { get_attr: [cluster_nodes, ip] }
+      bastion_ip: { get_param: bastion_fixed_ip }
+      security_groups:
+        - { get_attr: [ security_groups, sg_ingress_ssh ] }
+        - { get_attr: [ security_groups, sg_ingress_ballast_prinet ] }
+
+  ssh_floating_ip:
+    type: Mod::EECS::FloatingIp
+    properties:
+      port: { get_attr: [ssh_bastion, port] }
+      public_net: { get_param: public_net }
+
+outputs:
+  web_gateway_ip:
+    description: The public IP address to access gateway into cluster.
+    value: { get_attr: [web_floating_ip, ip] }
+  web_gateway_data:
+    description: data values returned from gateway wait_condition.
+    value: { get_attr: ['web_gateway', 'wc_data'] }
+  ssh_bastion_ip:
+    description: The public IP address to access bastion into cluster.
+    value: { get_attr: [ssh_floating_ip, ip] }
+  ssh_bastion_data:
+    description: data values returned from bastion wait_condition.
+    value: { get_attr: ['ssh_bastion', 'wc_data'] }
