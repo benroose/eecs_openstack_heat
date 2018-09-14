@@ -1,0 +1,114 @@
+heat_template_version: newton
+ 
+description: Template for setting up private network and install cluster with simple ssh bastion (no CFE config)
+
+parameters:
+## CLUSTER EXTERNAL ACCESS TYPE
+  cluster_access:
+    type: string
+    label: cluster network access
+    description: network access into cluster via bastion or gateway.
+    default: wsu_only
+    constraints:
+      - allowed_values: [external_access, wsu_only, datacenter_only, prinet_only]
+
+## GLOBAL PARAMS
+  image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for all nodes. Please use a Debian based image.
+    default: debian-server-9-cloudimg
+  key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be installed on all nodes.
+    default: salinas_JB-239-6528-LT1
+
+## NETWORK PARAMS
+  public_net:
+    type: string
+    label: Public network name or ID
+    description: Public network to attach cluster.
+    default: WSU_Public_971
+  private_net_name:
+    type: string
+    description: Private network name
+    default: 'private_network-private_net-pswy7kuy3fim'
+  private_subnet_name:
+    type: string
+    description: Private subnet name
+    default: 'private_network-private_subnet-ob7xgnvb7p66'
+  private_net_cidr:
+    type: string
+    label: CIDR
+    description: Classless Inter-Domain Routing (CIDR) of the private network.
+    default: '10.10.11.0/24'
+  private_net_gateway:
+    type: string
+    description: Private network gateway address
+    default: '10.10.11.1'
+
+
+## INSTANCE SPECIFIC PARAMS 
+  bastion_name:
+    type: string
+    label: Bastion Name
+    description: Hostname of ballast SSH bastion created.
+    default: salinas-bastion
+  bastion_flavor:
+    type: string
+    label: Bastion Flavor
+    description: Type of instance (flavor) to be used for the SSH bastion.
+    default: m1.small
+  bastion_fixed_ip:
+    type: string
+    label: Bastion IP
+    description: Fixed IP address to be used for the SSH bastion.
+    default: 10.10.11.110
+
+resources:
+## GENERATE PRIVATE NETWORK
+  # network:
+  #   type: Mod::EECS::PrivateNet
+  #   properties:
+  #     public_net: { get_param: public_net }
+  #     private_net_cidr: { get_param: private_net_cidr }
+  #     private_net_gateway: { get_param: private_net_gateway }
+
+## GENERATE SECURITY GROUPS
+  security_groups:
+    type: Mod::EECS::SecurityGroupsSSHOnly
+    properties:
+      cluster_access: { get_param: cluster_access }
+      private_subnet_cidr: { get_param: private_net_cidr }
+  
+## GENERATE SINGLE INSTANCE SSH BASTION/JUMP-HOST WITH FIXED_IP
+## NOTE: using a generic VMInstance with ssh security groups and and NO CFE config
+  ssh_bastion:
+    type: Mod::EECS::SimpleInstance
+    properties:
+      name: { get_param: bastion_name }
+      flavor: { get_param: bastion_flavor }
+      image: { get_param: image }
+      key: { get_param: key }
+      private_net: { get_param: private_net_name }
+      private_subnet: { str_replace: { params: { __name_prefix__: { get_param: private_net_name } }, template: __name_prefix__-sub } }
+      ip_address: { get_param: bastion_fixed_ip }
+      security_groups:
+        - { get_attr: [ security_groups, sg_ingress_ping ] }
+        - { get_attr: [ security_groups, sg_ingress_ssh ] }
+
+  ssh_floating_ip:
+    type: Mod::EECS::FloatingIp
+    properties:
+      port: { get_attr: [ssh_bastion, port] }
+      fixed_private_ip: { get_attr: [ssh_bastion, ip] }
+      # public_net: { get_param: public_net }
+
+outputs:
+  ssh_bastion_ip:
+    description: The public IP address to access bastion into cluster.
+    value: { get_attr: [ssh_floating_ip, ip] }
+  ssh_bastion_data:
+    description: data values returned from bastion wait_condition.
+    value: { get_attr: ['ssh_bastion', 'wc_data'] }

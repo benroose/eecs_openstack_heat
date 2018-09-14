@@ -4,11 +4,17 @@ description: Template to create security groups for cluster
 
 ## DEFINE PARAMS OR PULL IN FROM UPSTREAM TEMPLATE
 parameters:
+  cluster_access:
+    type: string
+    label: cluster network access
+    description: network access into cluster via bastion or gateway.
+    default: wsu_only
+
   private_subnet_cidr:
     type: string
     label: private cidr
     description: Subnet cidr to scope down security groups to private tenant network.
-    default: 10.10.10.0/24
+    default: 10.10.11.0/24
 
   wsu_publicnet_cidr:
     type: string
@@ -22,19 +28,17 @@ parameters:
     description: Subnet cidr to scope down security groups to wsu private vpn network.
     default: 10.250.0.0/24
 
-  datacenter_net_cidr:
+  dc_infrastructure_net_cidr:
     type: string
     label: datacenter cidr
-    description: Subnet cidr to scope down security groups to wsu datacenter internal network.
-    default: 192.168.250.0/24
+    description: Subnet cidr to scope down security groups to wsu datacenter infrastructure network.
+    default: 192.168.251.0/24
 
-  cluster_access:
+  dc_ipmi_net_cidr:
     type: string
-    label: cluster network access
-    description: network access into cluster via bastion or gateway.
-    default: wsu_only
-    constraints:
-      - allowed_values: [external_access, wsu_only, datacenter_only, prinet_only]
+    label: datacenter cidr
+    description: Subnet cidr to scope down security groups to wsu datacenter internal ipmi network.
+    default: 192.168.250.0/24
 
 conditions:
   external_access:
@@ -60,18 +64,41 @@ conditions:
 resources: 
 
 ## DEFINE CLUSTER SECURITY GROUPS
+  sg_ingress_ssh_prinet:
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name: ingress_ssh_ping_private_subnet
+        description: SSH and PING ingress from private and dc_infrastructure nets
+        rules:
+          - remote_ip_prefix: { get_param: private_subnet_cidr }
+            protocol: icmp
+          - remote_ip_prefix: { get_param: private_subnet_cidr }
+            protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+          - remote_ip_prefix: { get_param: dc_infrastructure_net_cidr }
+            protocol: icmp
+          - remote_ip_prefix: { get_param: dc_infrastructure_net_cidr }
+            protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+
   sg_ingress_ping:
       type: OS::Neutron::SecurityGroup
       properties:
         name: ingress_ping_wsu_public_net
-        description: PING ingress from WSU public network only
+        description: PING ingress from private subnet, dc_infrastructure, and WSU public network only
         rules:
-          - remote_ip_prefix: { get_param: wsu_subnet_cidr }
+          - remote_ip_prefix: { get_param: private_subnet_cidr }
+            protocol: icmp
+          - remote_ip_prefix: { get_param: dc_infrastructure_net_cidr }
+            protocol: icmp
+          - remote_ip_prefix: { get_param: wsu_publicnet_cidr }
             protocol: icmp
 
-  sg_ingress_ssh:
-      condition: external_access
+  sg_ingress_ssh_external:
       type: OS::Neutron::SecurityGroup
+      condition: external_access
       properties:
         name: ingress_ssh_wide_open
         description: SSH ingress from ANY network
@@ -80,9 +107,9 @@ resources:
             port_range_min: 22
             port_range_max: 22
 
-  sg_ingress_ssh:
-      condition: wsu_access
+  sg_ingress_ssh_wsu:
       type: OS::Neutron::SecurityGroup
+      condition: wsu_access
       properties:
         name: ingress_ssh_wsu_net
         description: SSH ingress from WSU public network only
@@ -96,22 +123,9 @@ resources:
             port_range_min: 22
             port_range_max: 22
 
-  sg_ingress_ssh_prinet:
+  sg_ingress_web_external:
       type: OS::Neutron::SecurityGroup
-      properties:
-        name: ingress_ssh_ping_private_subnet
-        description: SSH and PING ingress from private network only
-        rules:
-          - remote_ip_prefix: { get_param: private_subnet_cidr }
-            protocol: icmp
-          - remote_ip_prefix: { get_param: private_subnet_cidr }
-            protocol: tcp
-            port_range_min: 22
-            port_range_max: 22
-
-  sg_ingress_web:
       condition: external_access
-      type: OS::Neutron::SecurityGroup
       properties:
         name: ingress_web_wide_open
         description: HTTP/HTTPS web ingress from ANY network
@@ -123,9 +137,9 @@ resources:
             port_range_min: 443
             port_range_max: 443
 
-  sg_ingress_web:
-      condition: wsu_access
+  sg_ingress_web_wsu:
       type: OS::Neutron::SecurityGroup
+      condition: wsu_access
       properties:
         name: ingress_web_wsu_net
         description: HTTP/HTTPS web ingress from WSU public and vpn networks only
@@ -178,15 +192,15 @@ outputs:
   sg_ingress_ping:
     description: PING ingress from WSU public network
     value: { get_resource: sg_ingress_ping }
-  sg_ingress_ssh:
-    description: SSH ingress from defined external network
-    value: { get_resource: sg_ingress_ssh }
   sg_ingress_ssh_prinet:
     description: SSH and PING ingress from private network only
     value: { get_resource: sg_ingress_ssh_prinet }
+  sg_ingress_ssh:
+    description: SSH ingress from defined external network
+    value: { if: [external_access, {get_resource: sg_ingress_ssh_external}, {get_resource: sg_ingress_ssh_wsu}] }
   sg_ingress_web:
-    description: HTTP and HTTPS web ingress from ANY network
-    value: { get_resource: sg_ingress_web }
+    description: HTTP and HTTPS web ingress from defined external network
+    value: { if: [external_access, {get_resource: sg_ingress_web_external}, {get_resource: sg_ingress_web_wsu}] }
   sg_ingress_rdp_prinet:
     description: RDP ingress from private network only
     value: { get_resource: sg_ingress_rdp_prinet }

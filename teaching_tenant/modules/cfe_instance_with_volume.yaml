@@ -24,7 +24,7 @@ parameters:
     type: string
     label: Image name or ID
     description: Image to be used for server. Please use a Debian based image.
-    default: debian_server-9-cloudimg
+    default: debian-server-9-cloudimg
   flavor:
     type: string
     label: Flavor
@@ -34,7 +34,36 @@ parameters:
     type: string
     label: Key name
     description: Name of key-pair to be installed on the compute instance.
-    default: test
+    default: testing
+
+## VOLUME BLOCK DEVICE
+  volume_id:
+    type: string
+    label: Volume_ID
+    description: ID of existing cinder volume to use as mapped device
+    default: none
+  boot_index:
+    type: number
+    label: Boot_Index
+    description: Boot order index for instance
+    default: 0
+  block_device_name:
+    type: string
+    label: Device_Name
+    description: Name of device located in /dev/ on instance root directory (depreciated)
+    default: vda
+  delete_on_termination:
+    type: boolean
+    label: Delete_dev_on_term
+    description: Delete volume on termination of instance
+    default: false
+
+## METADATA
+  ballastd_ip:
+    type: string
+    label: ballast server ip address
+    description: IP address of ballast server host in the cluster pushed from upstream template.
+    default: no_ballast
 
 ## NETWORK
   private_net:
@@ -46,7 +75,7 @@ parameters:
     type: string
     label: Private subnet name or ID
     description: Subnet to attach server to.
-    default: private
+    default: private-sub
   security_groups:
     type: comma_delimited_list
     label: Security Group names or IDs
@@ -56,14 +85,6 @@ parameters:
     label: Defined IP Address
     description: user defined fixed ip address to association with port.
     default: dynamic_ip
-
-## METADATA
-  ballastd_ip:
-    type: string
-    label: ballast server ip address
-    description: IP address of ballast server host in the cluster pushed from upstream template.
-    default: no_ballast
-
 
   # cluster_ips:
   #   type: comma_delimited_list
@@ -142,13 +163,21 @@ resources:
     type: OS::Nova::Server
     properties:
       name: { get_param: name }
-      image: { get_param: image }
+      # image: { get_param: image }
       flavor: { get_param: flavor }
       key_name: { get_param: key }
+      block_device_mapping_v2:
+        - volume_id: { get_param: volume_id }
+        # - image: { get_param: image }
+          boot_index: { get_param: boot_index }
+          # device_name: { get_param: block_device_name }
+          delete_on_termination: { get_param: delete_on_termination }
       networks:
         - port: { if: ["use_dynamic_ip", {get_resource: dynamic_ip_port}, {get_resource: fixed_ip_port}] }
       metadata: { get_param: metadata }
         # cluster_name: { get_param: 'OS::stack_name' }
+        # cluster_type: { get_param: cluster_type }
+        # ballastd_ip: { get_param: ballastd_ip }
       user_data_format: RAW
       user_data: 
         str_replace:

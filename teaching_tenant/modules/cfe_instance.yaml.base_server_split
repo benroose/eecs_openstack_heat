@@ -15,11 +15,6 @@ parameters:
     label: cluster access type
     description: Access type for entire cluster.
     default: test
-  metadata:
-    type: json
-    label: json format metadata
-    description: metadata pushed into the instance.
-    default: []
   image:
     type: string
     label: Image name or ID
@@ -138,7 +133,9 @@ resources:
           ip_address: { get_param: ip_address }
 
 ## DEFINE VM SERVER (depending on whether to use a dynamic or fixed ip address)
-  base_server:
+  dynamic_ip_server:
+    condition: use_dynamic_ip
+    depends_on: dynamic_ip_port
     type: OS::Nova::Server
     properties:
       name: { get_param: name }
@@ -146,9 +143,35 @@ resources:
       flavor: { get_param: flavor }
       key_name: { get_param: key }
       networks:
-        - port: { if: ["use_dynamic_ip", {get_resource: dynamic_ip_port}, {get_resource: fixed_ip_port}] }
-      metadata: { get_param: metadata }
-        # cluster_name: { get_param: 'OS::stack_name' }
+        - port: {get_resource: dynamic_ip_port}
+      metadata:
+        cluster_name: { get_param: 'OS::stack_name' }
+        cluster_type: { get_param: cluster_type }
+        ballastd_ip: { get_param: ballastd_ip }
+      user_data_format: RAW
+      user_data: 
+        str_replace:
+          template: { get_file: cfengine_installer.sh }
+          params:
+            $POLICYHUB_IP: { get_param: policyhub }
+            $wc_notify: { get_attr: ['wait_handle', 'curl_cli'] }
+
+  fixed_ip_server:
+    condition: { not: use_dynamic_ip }
+    depends_on: fixed_ip_port
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: name }
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key }
+      networks:
+        # TOO UNSTABLE - port: { if: ["use_dynamic_ip", {get_resource: dynamic_ip_port}, {get_resource: fixed_ip_port}] }
+        - port: {get_resource: fixed_ip_port}
+      metadata:
+        cluster_name: { get_param: 'OS::stack_name' }
+        cluster_type: { get_param: cluster_type }
+        ballastd_ip: { get_param: ballastd_ip }
       user_data_format: RAW
       user_data: 
         str_replace:
@@ -161,10 +184,10 @@ resources:
 outputs:
   name:
     description: Name of the instance.
-    value: { get_attr: [base_server, name] }
+    value: { if: [use_dynamic_ip, {get_attr: [dynamic_ip_server, name]}, {get_attr: [fixed_ip_server, name]}] }
   ip:
     description: The IP address of the instance.
-    value: { get_attr: [base_server, first_address] }
+    value: { if: [use_dynamic_ip, {get_attr: [dynamic_ip_server, first_address]}, {get_attr: [fixed_ip_server, first_address]}] }
   port:
     description: The network port of the instance.
     value: { if: [use_dynamic_ip, {get_resource: dynamic_ip_port}, {get_resource: fixed_ip_port}] }

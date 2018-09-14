@@ -1,0 +1,95 @@
+heat_template_version: newton
+ 
+description: Template for setting up private network and security groups
+
+parameters:
+## CLUSTER EXTERNAL ACCESS TYPE
+  cluster_type:
+    type: string
+    label: cluster type
+    description: type of cluster to build.
+    default: full_cluster
+    constraints:
+      - allowed_values: [full_cluster, ssh_only, web_only]
+  cluster_access:
+    type: string
+    label: cluster network access
+    description: network access into cluster via bastion or gateway.
+    default: external_access
+    constraints:
+      - allowed_values: [external_access, wsu_only, datacenter_only, prinet_only]
+
+## NETWORK PARAMS
+  public_net:
+    type: string
+    label: Public network name or ID
+    description: Public network to attach cluster.
+    default: WSU_Public_971
+  private_net_name:
+    type: string
+    description: Private network name
+    default: test_net
+  private_net_cidr:
+    type: string
+    label: CIDR
+    description: Classless Inter-Domain Routing (CIDR) of the private network.
+    default: '10.10.10.0/24'
+  private_net_gateway:
+    type: string
+    description: Private network gateway address
+    default: '10.10.10.1'
+
+  gateway_fixed_ip:
+    type: string
+    label: Web Gateway IP
+    description: Fixed IP address to be used for the web gateway.
+    default: 10.10.10.100
+  bastion_fixed_ip:
+    type: string
+    label: Bastion IP
+    description: Fixed IP address to be used for the SSH bastion.
+    default: 10.10.10.110
+  ballastd_ip:
+    type: string
+    label: Ballast Server IP
+    description: Defined IP address for ballast server in cluster to be sent as metadata to all hosts.
+    default: 10.10.10.100
+
+conditions:
+  enable_ssh_bastion:
+    or:
+      - equals:
+        - get_param: cluster_type
+        - full_cluster
+      - equals:
+        - get_param: cluster_type
+        - ssh_only
+
+  enable_web_gateway:
+    or:
+      - equals:
+        - get_param: cluster_type
+        - full_cluster
+      - equals:
+        - get_param: cluster_type
+        - web_only
+
+resources:
+## GENERATE PRIVATE NETWORK
+  network:
+    type: Mod::EECS::PrivateNet
+    properties:
+      public_net: { get_param: public_net }
+      # private_net_name: { get_param: "OS::stack_name" }
+      private_net_name: { get_param: private_net_name }
+      private_net_cidr: { get_param: private_net_cidr }
+      private_net_gateway: { get_param: private_net_gateway }
+
+## GENERATE SECURITY GROUPS (NOT RUN HERE!)
+  # security_groups:
+  #   type: Mod::EECS::SecurityGroups
+  #   properties:
+  #     cluster_access: { get_param: cluster_access }
+  #     private_subnet_cidr: { get_attr: [network, cidr] }
+
+outputs:

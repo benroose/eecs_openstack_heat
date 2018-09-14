@@ -7,7 +7,11 @@ parameters:
     type: string
     label: Public network name or ID
     description: Public network with floating IP addresses.
-    default: public-971
+    default: WSU_Public_971
+  private_net_name:
+    type: string
+    description: Private network name
+    default: test_net
   private_net_cidr:
     type: string
     label: CIDR
@@ -34,10 +38,13 @@ parameters:
 resources:
   private_net:
     type: OS::Neutron::Net
+    properties:
+      name: { get_param: private_net_name }
 
   private_subnet:
     type: OS::Neutron::Subnet
     properties:
+      name: { str_replace: { params: { __name_prefix__: { get_param: private_net_name } }, template: __name_prefix__-sub } }
       network_id: { get_resource: private_net }
       cidr: { get_param: private_net_cidr }
       gateway_ip: { get_param: private_net_gateway }

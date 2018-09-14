@@ -1,0 +1,45 @@
+# Custom Parameters for EECS testing heat templates
+
+parameter_defaults:
+
+## CLUSTER PARAMS
+  cluster_type: ssh_only
+  cluster_access: wsu_only
+  cluster_size: 16
+  node_name: cstest-node-%index%
+  gateway_name: cstest-gateway
+  bastion_name: cstest-bastion
+
+## USER PARAMS
+  key: testing
+
+## EXISTING RESOURCES
+  # bastion_volume_id: 663bd6d5-8f30-4eae-8d5e-aa044d7d076b
+  # gateway_volume_id: abb4808f-5b66-4e2a-88d3-0f028bb7f1b7
+
+## METADATA FOR INSTANCES
+    # not adding yet - cluster_name: { get_param: 'OS::stack_name' }
+  metadata:
+     "cluster_type": "full_cluster"
+     "ballastd_ip": "10.10.10.100"
+
+## NETWORK PARAMS
+  public_net: WSU_Public_971
+  private_net_name: test-net
+  private_net_cidr: '10.10.10.0/24'
+  private_net_gateway: '10.10.10.1'
+  gateway_fixed_ip: 10.10.10.100
+  bastion_fixed_ip: 10.10.10.110
+  ballastd_ip: 10.10.10.100
+
+
+resource_registry:
+  Mod::EECS::CFEInstance: modules/cfe_instance.yaml
+  Mod::EECS::CFEInstanceWithVol: modules/cfe_instance_with_volume.yaml
+  Mod::EECS::FloatingIp: modules/floating_ip.yaml
+  Mod::EECS::PrivateNet: modules/private_network.yaml
+  Mod::EECS::SecurityGroups: modules/security_groups.yaml
+  Mod::EECS::SecurityGroupsSSHOnly: modules/security_groups_ssh_only.yaml
+  Mod::EECS::SimpleInstance: modules/simple_instance.yaml
+  Mod::EECS::SimpleInstanceRDP: modules/simple_instance_rdp.yaml
+  Mod::EECS::SimpleInstanceWEB: modules/simple_instance_web.yaml
