@@ -22,22 +22,18 @@ parameters:
     type: string
     label: Key name
     description: Name of key-pair to be installed on all nodes.
-    default: salinas_JB-239-6528-LT1
+    default: testing
 
 ## NETWORK PARAMS
   public_net:
     type: string
     label: Public network name or ID
     description: Public network to attach cluster.
-    default: WSU_Public_971
+    default: Public_971
   private_net_name:
     type: string
     description: Private network name
-    default: 'private_network-private_net-pswy7kuy3fim'
-  private_subnet_name:
-    type: string
-    description: Private subnet name
-    default: 'private_network-private_subnet-ob7xgnvb7p66'
+    default: test-net
   private_net_cidr:
     type: string
     label: CIDR
@@ -54,7 +50,7 @@ parameters:
     type: string
     label: Bastion Name
     description: Hostname of ballast SSH bastion created.
-    default: salinas-bastion
+    default: test-bastion
   bastion_flavor:
     type: string
     label: Bastion Flavor
@@ -67,13 +63,14 @@ parameters:
     default: 10.10.11.110
 
 resources:
-## GENERATE PRIVATE NETWORK
-  # network:
-  #   type: Mod::EECS::PrivateNet
-  #   properties:
-  #     public_net: { get_param: public_net }
-  #     private_net_cidr: { get_param: private_net_cidr }
-  #     private_net_gateway: { get_param: private_net_gateway }
+## GENERATE PRIVATE NETWORK, SUBNET, AND ROUTER
+  network:
+    type: Mod::EECS::PrivateNet
+    properties:
+      public_net: { get_param: public_net }
+      private_net_name: { get_param: private_net_name }
+      private_net_cidr: { get_param: private_net_cidr }
+      private_net_gateway: { get_param: private_net_gateway }
 
 ## GENERATE SECURITY GROUPS
   security_groups:
