@@ -1,39 +1,25 @@
-# Custom Parameters for EECS cslab heat templates
+# Custom Parameters for EECS testing heat templates
 
 parameter_defaults:
 
 ## CLUSTER PARAMS
-  cluster_type: full_cluster
-  cluster_access: external_access
-  cluster_size: 16
-  node_name: cslab-node-%index%
-  gateway_name: cslab-gateway
-  bastion_name: cslab-bastion
+  cluster_access: wsu_only
 
 ## USER PARAMS
-  key: teaching
+  key: testing
 
 ## EXISTING RESOURCES
-  bastion_volume_id: 663bd6d5-8f30-4eae-8d5e-aa044d7d076b
-  gateway_volume_id: abb4808f-5b66-4e2a-88d3-0f028bb7f1b7
-  # gateway_volume_id: 4228ab95-ddaf-4358-b431-4d68da4bebdc
-
 
 ## METADATA FOR INSTANCES
-    # not adding yet - cluster_name: { get_param: 'OS::stack_name' }
-  metadata:
-     "cluster_type": "full_cluster"
-     "ballastd_ip": "10.10.10.100"
+#  metadata:
 
 ## NETWORK PARAMS
-  public_net: WSU_Public_971
-  private_net_name: cslab-net
+  public_net: Public_971
+  private_net_name: test-net
   private_net_cidr: '10.10.10.0/24'
   private_net_gateway: '10.10.10.1'
-  gateway_fixed_ip: 10.10.10.100
+  bastion_name: cstest
   bastion_fixed_ip: 10.10.10.110
-  ballastd_ip: 10.10.10.100
-
 
 resource_registry:
   Mod::EECS::CFEInstance: ../modules/cfe_instance.yaml

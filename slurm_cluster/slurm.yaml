@@ -1,0 +1,99 @@
+heat_template_version: 2013-05-23
+
+description: Template that installs a cluster of slurm servers.
+
+parameters:
+  cluster_size:
+    description: Number of slurm nodes
+    type: number
+    default: 3
+  key_name:
+    type: string
+    description: Name of key-pair to be used
+  master_name:
+    type: string
+    description: Name of slurm master
+    default: master
+  node_name:
+    type: string
+    description: Base name of slurm nodes
+    default: node
+  master_flavor:
+    description: slurm master instance flavor
+    type: string
+    default: m1.small
+  node_flavor:
+    description: slurm node instance flavor
+    type: string
+    default: m1.small
+  image:
+    type: string
+    label: instance boot image
+  private_net_name:
+    type: string
+    label: Private Network
+    description: Name or ID of private network for cluster
+  public_net:
+    type: string
+    label: Public Network
+    description: Name or ID of public network for access floating IP
+    default: WSU_Public_971 
+  private_key:
+    type: string
+    description: Name of private key to be used for the local slurm user
+    default: []
+    hidden: true
+  public_key:
+    type: string
+    description: Name of public key to be used for the local slurm user
+    default: []
+    hidden: true
+      
+resources:
+  my_slurm_key:
+    properties:
+      name: my_slurm_key
+      save_private_key: true
+    type: OS::Nova::KeyPair
+
+  slurm_cluster:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: { get_param: cluster_size}
+      resource_def:
+        type: Mod::EECS::slurmNode
+        properties:
+          image: { get_param: image }
+          flavor: { get_param: node_flavor }
+          key_name: { get_param: key_name }
+          private_net: { get_param: private_net_name }
+          public_key: { get_attr: [ my_slurm_key, public_key ]  }
+          private_key: { get_attr: [ my_slurm_key, private_key ] }
+          name:
+            str_replace:
+              template:
+                $name-$index
+              params:
+                $name: { get_param: node_name }
+                $index: "%index%"
+
+
+  slurm_master:
+    type: Mod::EECS::slurmMaster
+    depends_on: slurm_cluster
+    properties:
+      image: { get_param: image }
+      flavor: { get_param: master_flavor }
+      key_name: { get_param: key_name }
+      private_net: { get_param: private_net_name }
+      servers: { get_attr: [slurm_cluster, node_param] }
+      private_key: { get_attr: [ my_slurm_key, private_key ] }
+      public_key: { get_attr: [ my_slurm_key, public_key ]  }
+      master_name: { get_param: master_name }
+      node_name: { get_param: node_name }
+      public_net: { get_param: public_net }
+
+outputs:
+    public_ip:
+      description: The public IP address of this slurm cluster.
+      value: { get_attr: [slurm_master, ip] }

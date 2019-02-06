@@ -1,0 +1,39 @@
+# Custom Parameters for EECS testing heat templates
+
+parameter_defaults:
+
+## CLUSTER PARAMS
+  cluster_access: wsu_only
+
+## USER PARAMS
+  key: salinas_laptop
+
+## EXISTING RESOURCES
+
+## METADATA FOR INSTANCES
+#  metadata:
+
+## CUSTOM NETWORK PARAMS
+  public_net: Public_971
+  private_net_name: private-net
+  private_net_cidr: '10.10.11.0/24'
+  private_net_gateway: '10.10.11.1'
+
+## CUSTOM INSTANCE SPECIFIC PARAMS
+  bastion_name: ssh-bastion
+  bastion_fixed_ip: 10.10.11.110
+
+  project_name: nfv
+  project_flavor: m1.medium
+  project_vol_size: 20
+  project_image: ubuntu-server-18.04-cloudimg
+
+resource_registry:
+  Mod::EECS::CFEInstance: modules/cfe_instance.yaml
+  Mod::EECS::CFEInstanceWithVol: modules/cfe_instance_with_volume.yaml
+  Mod::EECS::FloatingIp: modules/floating_ip.yaml
+  Mod::EECS::PrivateNet: modules/private_network.yaml
+  Mod::EECS::SecurityGroups: modules/security_groups.yaml
+  Mod::EECS::SecurityGroupsSSHOnly: modules/security_groups_ssh_only.yaml
+  Mod::EECS::SimpleInstance: modules/simple_instance.yaml
+  Mod::EECS::SimpleInstanceWithVol: modules/simple_instance_with_volume.yaml

@@ -1,0 +1,40 @@
+# Custom Parameters for EECS Dr He first PaaS project heat templates
+
+parameter_defaults:
+
+## CLUSTER PARAMS
+  cluster_access: wsu_only
+  bastion_enabled: no
+
+## USER PARAMS
+  key: testing
+  # key: dr_he_ssh_key
+
+## EXISTING RESOURCES
+
+## METADATA FOR INSTANCES
+#  metadata:
+
+## NETWORK PARAMS
+  public_net: Public_971
+  private_net_name: private-net
+  private_net_cidr: '10.10.11.0/24'
+  private_net_gateway: '10.10.11.1'
+
+## PROJECT INSTANCE PARAMS
+  project_name: he_instance
+  project_flavor: m1.xlarge
+  project_vol_size: 80
+  project_image: ubuntu-server-16.04-cloudimg
+
+
+resource_registry:
+  Mod::EECS::CFEInstance: ../modules/cfe_instance.yaml
+  Mod::EECS::CFEInstanceWithVol: ../modules/cfe_instance_with_volume.yaml
+  Mod::EECS::FloatingIp: ../modules/floating_ip.yaml
+  Mod::EECS::PrivateNet: ../modules/private_network.yaml
+  Mod::EECS::SecurityGroups: ../modules/security_groups.yaml
+  Mod::EECS::SecurityGroupsPaaS: ../modules/security_groups_paas.yaml
+  Mod::EECS::SecurityGroupsSSHOnly: ../modules/security_groups_ssh_only.yaml
+  Mod::EECS::SimpleInstance: ../modules/simple_instance.yaml
+  Mod::EECS::SimpleInstanceWithVol: ../modules/simple_instance_with_volume.yaml

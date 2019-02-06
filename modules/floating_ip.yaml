@@ -1,0 +1,50 @@
+heat_template_version: newton
+
+description: Template that assigns a floating IP address to a server.
+
+parameters:
+  port:
+    type: string
+    label: Server port
+    description: The server port that receives the floating IP address.
+
+  private_ip:
+    type: string
+    label: Server Private IP
+    description: The server private IP that receives the floating IP address.
+    default: dynamic_ip
+    
+  public_net:
+    type: string
+    label: Public network name or ID
+    description: Public network with floating IP addresses.
+    default: public-971
+
+conditions:
+  use_dynamic_ip: { equals: [{get_param: private_ip}, 'dynamic_ip'] }
+
+resources:
+  floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: public_net }
+
+  floating_ip_assoc_with_fixed_port:
+    condition: use_dynamic_ip
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floatingip_id: { get_resource: floating_ip }
+      port_id: { get_param: port }
+
+  floating_ip_assoc_with_dynamic_port:
+    condition: { not: use_dynamic_ip }
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floatingip_id: { get_resource: floating_ip }
+      port_id: { get_param: port }
+      fixed_ip_address: { get_param: private_ip }
+
+outputs:
+  ip:
+    description: The floating IP address assigned to the server.
+    value: { get_attr: [floating_ip, floating_ip_address] }

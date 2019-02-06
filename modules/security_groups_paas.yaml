@@ -1,0 +1,231 @@
+heat_template_version: newton
+
+description: Template to create security groups for paas projects
+
+## DEFINE PARAMS OR PULL IN FROM UPSTREAM TEMPLATE
+parameters:
+  cluster_access:
+    type: string
+    label: cluster network access
+    description: network access into cluster via bastion or gateway.
+    default: wsu_only
+
+  private_subnet_cidr:
+    type: string
+    label: private cidr
+    description: Subnet cidr to scope down security groups to private tenant network.
+    default: 10.10.11.0/24
+
+  wsu_vpnnet_cidr:
+    type: string
+    label: wsu vpn cidr
+    description: Subnet cidr to scope down security groups to wsu private vpn network.
+    default: 10.250.0.0/24
+
+  wsu_privatenet_cidr:
+    type: string
+    label: wsu private cidr
+    description: Subnet cidr to scope down security groups to wsu private wired and wireless networks 
+    default: 172.0.0.0/8
+
+  wsu_publicnet_cidr:
+    type: string
+    label: wsu public cidr
+    description: TRY NOT TO USE - Subnet cidr to scope down security groups to wsu older public networks.
+    default: 156.26.0.0/16
+
+  eecs_engrnet_cidr:
+    type: string
+    label: eecs engineering cidr
+    description: Subnet cidr to scope down security groups to eecs engineering area 43 public network.
+    default: 156.26.43.0/24
+
+  eecs_publicnet_cidr:
+    type: string
+    label: eecs public cidr
+    description: Subnet cidr to scope down security groups to eecs data center public networks.
+    default: 156.26.250.0/25
+
+  ipmi_net_cidr:
+    type: string
+    label: ipmi cidr
+    description: Subnet cidr to scope down security groups to eecs datacenter ipmi internal network.
+    default: 192.168.250.0/24
+
+  infrastructure_net_cidr:
+    type: string
+    label: infrastructure cidr
+    description: Subnet cidr to scope down security groups to eecs datacenter infrastructure network.
+    default: 192.168.251.0/24
+
+conditions:
+  external_access:
+    equals:
+      - get_param: cluster_access
+      - external_access
+
+  wsu_access:
+    equals:
+     - get_param: cluster_access
+     - wsu_only
+
+  datacenter_access:
+    equals:
+     - get_param: cluster_access
+     - datacenter_only
+
+  prinet_access:
+    equals:
+     - get_param: cluster_access
+     - prinet_only
+
+resources: 
+
+## DEFINE DEFAULT PRIVATE NETWORK SECURITY GROUPS
+  sg_ingress_ssh_prinet:
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name: ingress ssh ping priv subnet
+        description: SSH and PING ingress from private network only
+        rules:
+          - remote_ip_prefix: { get_param: private_subnet_cidr }
+            protocol: icmp
+          - remote_ip_prefix: { get_param: private_subnet_cidr }
+            protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+
+## DEFINE DEFAULT INTERNAL PING SECURITY GROUPS
+  sg_ingress_ping:
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name: ingress ping eecs dc net
+        description: PING ingress from eecs datacenter networks only
+        rules:
+          - remote_ip_prefix: { get_param: eecs_publicnet_cidr }
+            protocol: icmp
+          - remote_ip_prefix: { get_param: infrastructure_net_cidr }
+            protocol: icmp
+          - remote_ip_prefix: { get_param: ipmi_net_cidr }
+            protocol: icmp
+
+## DEFINE SSH SECURITY GROUPS
+  sg_ingress_ssh_external:
+      type: OS::Neutron::SecurityGroup
+      condition: external_access
+      properties:
+        name: ingress ssh WIDE OPEN
+        description: SSH ingress from ANY network
+        rules:
+          - protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+
+  sg_ingress_ssh_wsu:
+      type: OS::Neutron::SecurityGroup
+      condition: wsu_access
+      properties:
+        name: ingress ssh wsu net
+        description: SSH ingress from WSU VPN and EECS data center networks only
+        rules:
+          - remote_ip_prefix: { get_param: wsu_vpnnet_cidr }
+            protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+          - remote_ip_prefix: { get_param: eecs_publicnet_cidr }
+            protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+          - remote_ip_prefix: { get_param: infrastructure_net_cidr }
+            protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+          - remote_ip_prefix: { get_param: ipmi_net_cidr }
+            protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+
+  sg_ingress_ssh_datacenter:
+      type: OS::Neutron::SecurityGroup
+      condition: datacenter_access
+      properties:
+        name: ingress ssh dc net
+        description: SSH ingress from EECS data center and WSU VPN networks only
+        rules:
+          - remote_ip_prefix: { get_param: eecs_publicnet_cidr }
+            protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+          - remote_ip_prefix: { get_param: infrastructure_net_cidr }
+            protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+          - remote_ip_prefix: { get_param: ipmi_net_cidr }
+            protocol: tcp
+            port_range_min: 22
+            port_range_max: 22
+
+## DEFINE WEB SECURITY GROUPS
+  sg_ingress_web_wsu:
+      type: OS::Neutron::SecurityGroup
+      condition: wsu_access
+      properties:
+        name: ingress web wsu net
+        description: HTTP/HTTPS ingress from WSU VPN and EECS data center networks only
+        rules:
+          - remote_ip_prefix: { get_param: wsu_vpnnet_cidr }
+            protocol: tcp
+            port_range_min: 80
+            port_range_max: 80
+          - remote_ip_prefix: { get_param: eecs_publicnet_cidr }
+            protocol: tcp
+            port_range_min: 80
+            port_range_max: 80
+          - remote_ip_prefix: { get_param: eecs_engrnet_cidr }
+            protocol: tcp
+            port_range_min: 80
+            port_range_max: 80
+          - remote_ip_prefix: { get_param: wsu_privatenet_cidr }
+            protocol: tcp
+            port_range_min: 80
+            port_range_max: 80
+          - remote_ip_prefix: { get_param: infrastructure_net_cidr }
+            protocol: tcp
+            port_range_min: 80
+            port_range_max: 80
+          - remote_ip_prefix: { get_param: wsu_vpnnet_cidr }
+            protocol: tcp
+            port_range_min: 443
+            port_range_max: 443
+          - remote_ip_prefix: { get_param: wsu_privatenet_cidr }
+            protocol: tcp
+            port_range_min: 443
+            port_range_max: 443
+          - remote_ip_prefix: { get_param: eecs_publicnet_cidr }
+            protocol: tcp
+            port_range_min: 443
+            port_range_max: 443
+          - remote_ip_prefix: { get_param: eecs_engrnet_cidr }
+            protocol: tcp
+            port_range_min: 443
+            port_range_max: 443
+          - remote_ip_prefix: { get_param: infrastructure_net_cidr }
+            protocol: tcp
+            port_range_min: 443
+            port_range_max: 443
+
+
+## DEFINE OUTPUTS TO UPSTREAM TEMPLATE
+outputs:
+  sg_ingress_ping:
+    description: PING ingress from WSU public network
+    value: { get_resource: sg_ingress_ping }
+  sg_ingress_ssh_prinet:
+    description: SSH and PING ingress from private network only
+    value: { get_resource: sg_ingress_ssh_prinet }
+  sg_ingress_ssh:
+    description: SSH ingress from defined external networks
+    value: { if: [external_access, {get_resource: sg_ingress_ssh_external}, { if: [wsu_access, {get_resource: sg_ingress_ssh_wsu}, {get_resource: sg_ingress_ssh_datacenter}] } ] }
+  sg_ingress_web:
+    description: HTTP/HTTPS ingress from defined external networks
+    value: { if: [external_access, {get_resource: sg_ingress_web_external}, { if: [wsu_access, {get_resource: sg_ingress_web_wsu}, {get_resource: sg_ingress_web_datacenter}] } ] }

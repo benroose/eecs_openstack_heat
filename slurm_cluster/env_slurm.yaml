@@ -1,0 +1,34 @@
+# Custom Parameters for EECS slurm cluster heat templates
+
+parameter_defaults:
+
+## CLUSTER PARAMS
+  # cluster_type: ssh_only
+  # cluster_access: wsu_only
+  cluster_size: 2
+  master_name: master
+  node_name: node
+  image: ubuntu-server-18.04-cloudimg
+
+## USER PARAMS
+  key_name: testing
+
+## EXISTING RESOURCES
+
+## METADATA FOR INSTANCES
+  # metadata:
+  #    "cluster_type": "full_cluster"
+  #    "ballastd_ip": "10.10.10.100"
+
+## NETWORK PARAMS
+  public_net: WSU_Public_971
+  private_net_name: slurm-net
+  private_net_cidr: '10.10.11.0/24'
+  private_net_gateway: '10.10.11.1'
+
+resource_registry:
+  Mod::EECS::slurmNode: modules/slurm_node.yaml
+  Mod::EECS::slurmMaster: modules/slurm_master.yaml
+  Mod::EECS::FloatingIp: modules/floating_ip.yaml
+  Mod::EECS::PrivateNet: modules/private_network.yaml
+  Mod::EECS::SecurityGroups: modules/security_groups.yaml

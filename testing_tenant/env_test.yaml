@@ -1,0 +1,48 @@
+# Custom Parameters for EECS infrastructure heat templates
+
+parameter_defaults:
+
+## CLUSTER PARAMS
+  cluster_access: datacenter_only
+
+## USER PARAMS
+  key: testing
+
+## EXISTING RESOURCES
+
+## METADATA FOR INSTANCES
+#  metadata:
+
+## NETWORK PARAMS
+  public_net: Public_971
+  private_net_name: ansible-private
+  private_net_cidr: '10.10.12.0/24'
+  private_net_gateway: '10.10.12.1'
+
+## CONTROL INSTANCE PARAMS
+  bastion_name: rhel-test
+  bastion_image: rhel-server-7.6-cloudimg
+  bastion_fixed_ip: 10.10.12.110
+
+  ansible_name: ansible-test
+  ansible_fixed_ip: 10.10.12.120
+
+## TEST INSTANCE PARAMS
+  test1_group_size: 1
+  test1_name: centos-test-%index%
+  test1_image: centos-server-7-cloudimg
+
+  test2_group_size: 1
+  test2_name: debian-test-%index%
+  test2_image: debian-server-9-cloudimg
+
+resource_registry:
+  Mod::EECS::AnsibleEngine: ../modules/rhel_ansible_instance.yaml
+  Mod::EECS::CFEInstance: ../modules/cfe_instance.yaml
+  Mod::EECS::CFEInstanceWithVol: ../modules/cfe_instance_with_volume.yaml
+  Mod::EECS::FloatingIp: ../modules/floating_ip.yaml
+  Mod::EECS::PrivateNet: ../modules/private_network.yaml
+  Mod::EECS::SecurityGroups: ../modules/security_groups.yaml
+  Mod::EECS::SecurityGroupsSSHOnly: ../modules/security_groups_ssh_only.yaml
+  Mod::EECS::SimpleInstance: ../modules/simple_instance.yaml
+  Mod::EECS::SimpleInstanceWithVol: ../modules/simple_instance_with_volume.yaml

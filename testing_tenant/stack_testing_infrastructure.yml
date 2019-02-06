@@ -1,0 +1,249 @@
+heat_template_version: newton
+ 
+description: Template for setting up private network and install cluster with simple ssh bastion (no CFE config)
+
+parameters:
+## CLUSTER EXTERNAL ACCESS TYPE
+  cluster_access:
+    type: string
+    label: cluster network access
+    description: network access into cluster via bastion or gateway.
+    default: datacenter_only
+    constraints:
+      - allowed_values: [external_access, wsu_only, datacenter_only, prinet_only]
+
+## GLOBAL PARAMS
+  key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be installed on all nodes.
+    default: testing
+
+## NETWORK PARAMS
+  public_net:
+    type: string
+    label: Public network name or ID
+    description: Public network to attach cluster.
+    default: Public_971
+  private_net_name:
+    type: string
+    description: Private network name
+    default: test-net
+  private_net_cidr:
+    type: string
+    label: CIDR
+    description: Classless Inter-Domain Routing (CIDR) of the private network.
+    default: '10.10.11.0/24'
+  private_net_gateway:
+    type: string
+    description: Private network gateway address
+    default: '10.10.11.1'
+
+
+## INSTANCE SPECIFIC PARAMS 
+  bastion_name:
+    type: string
+    label: Bastion Name
+    description: Hostname of ballast SSH bastion created.
+    default: test-bastion
+  bastion_flavor:
+    type: string
+    label: Bastion Flavor
+    description: Type of instance (flavor) to be used for the SSH bastion.
+    default: m1.small
+  bastion_image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for SSH bastion.
+    default: debian-server-9-cloudimg
+  bastion_fixed_ip:
+    type: string
+    label: Bastion IP
+    description: Fixed IP address to be used for the SSH bastion.
+    default: 10.10.11.110
+
+  ansible_name:
+    type: string
+    label: Name
+    description: Hostname of ansible instance created.
+    default: ansible-server
+  ansible_flavor:
+    type: string
+    label: Flavor
+    description: Type of instance (flavor) to be used for the ansible instance.
+    default: m1.small
+  ansible_image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for ansible instance.
+    default: rhel-server-7.6-cloudimg
+  ansible_fixed_ip:
+    type: string
+    label: ansible IP
+    description: Fixed IP address to be used for ansible engine.
+    default: 10.10.11.120
+
+  test1_group_size:
+    type: string
+    label: group size
+    description: Number of test instances created.
+    default: 1
+  test1_name:
+    type: string
+    label: Name
+    description: Hostname of test instance created (Use -%index% for increasing host #).
+    default: test-server-%index%
+  test1_flavor:
+    type: string
+    label: Flavor
+    description: Type of instance (flavor) to be used for the test instance.
+    default: m1.small
+  test1_image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for test instance.
+    default: debian-server-9-cloudimg
+
+  test2_group_size:
+    type: string
+    label: group size
+    description: Number of test instances created.
+    default: 1
+  test2_name:
+    type: string
+    label: Name
+    description: Hostname of test instance created (Use -%index% for increasing host #).
+    default: test-server-%index%
+  test2_flavor:
+    type: string
+    label: Flavor
+    description: Type of instance (flavor) to be used for the test instance.
+    default: m1.small
+  test2_image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for test instance.
+    default: debian-server-9-cloudimg
+
+## CLOUD-INIT USER DATA PARAMS
+  script_var1:
+    type: string
+    description: generic environment variable to pass to cloud-init script
+    default: no_value
+  script_var2:
+    type: string
+    description: generic environment variable to pass to cloud-init script
+    default: no_value
+
+resources:
+## GENERATE PRIVATE NETWORK, SUBNET, AND ROUTER
+  network:
+    type: Mod::EECS::PrivateNet
+    properties:
+      public_net: { get_param: public_net }
+      private_net_name: { get_param: private_net_name }
+      private_net_cidr: { get_param: private_net_cidr }
+      private_net_gateway: { get_param: private_net_gateway }
+
+## GENERATE SECURITY GROUPS
+  security_groups:
+    type: Mod::EECS::SecurityGroupsSSHOnly
+    properties:
+      cluster_access: { get_param: cluster_access }
+      private_subnet_cidr: { get_param: private_net_cidr }
+  
+## GENERATE SINGLE INSTANCE SSH BASTION/JUMP-HOST WITH FIXED_IP
+## NOTE: using a generic VMInstance with ssh security groups and and NO CFE config
+  # ssh_bastion:
+  #   type: Mod::EECS::SimpleInstance
+  #   properties:
+  #     name: { get_param: bastion_name }
+  #     flavor: { get_param: bastion_flavor }
+  #     image: { get_param: bastion_image }
+  #     key: { get_param: key }
+  #     private_net: { get_param: private_net_name }
+  #     private_subnet: { str_replace: { params: { __name_prefix__: { get_param: private_net_name } }, template: __name_prefix__-sub } }
+  #     ip_address: { get_param: bastion_fixed_ip }
+  #     security_groups:
+  #       - { get_attr: [ security_groups, sg_ingress_ping ] }
+  #       - { get_attr: [ security_groups, sg_ingress_ssh ] }
+
+  # ssh_floating_ip:
+  #   type: Mod::EECS::FloatingIp
+  #   properties:
+  #     port: { get_attr: [ssh_bastion, port] }
+  #     fixed_private_ip: { get_attr: [ssh_bastion, ip] }
+  #     # public_net: { get_param: public_net }
+
+## GENERATE SINGLE INSTANCE ANSIBLE SERVER WITH FIXED_IP
+  ansible_server:
+    type: Mod::EECS::AnsibleEngine
+    properties:
+      name: { get_param: ansible_name }
+      flavor: { get_param: ansible_flavor }
+      image: { get_param: ansible_image }
+      key: { get_param: key }
+      private_net: { get_param: private_net_name }
+      private_subnet: { str_replace: { params: { __name_prefix__: { get_param: private_net_name } }, template: __name_prefix__-sub } }
+      ip_address: { get_param: ansible_fixed_ip }
+      security_groups:
+        - { get_attr: [ security_groups, sg_ingress_ping ] }
+        - { get_attr: [ security_groups, sg_ingress_ssh ] }
+
+  ansible_floating_ip:
+    type: Mod::EECS::FloatingIp
+    properties:
+      port: { get_attr: [ansible_server, port] }
+      private_ip: { get_attr: [ansible_server, ip] }
+
+  test1_instances:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: { get_param: test1_group_size }
+      resource_def:
+        type: Mod::EECS::SimpleInstance
+        properties:
+          name: { get_param: test1_name }
+          flavor: { get_param: test1_flavor }
+          image: { get_param: test1_image }
+          key: { get_param: key }
+          private_net: { get_param: private_net_name }
+          private_subnet: { str_replace: { params: { __name_prefix__: { get_param: private_net_name } }, template: __name_prefix__-sub } }
+          security_groups:
+            - { get_attr: [ security_groups, sg_ingress_ssh_prinet ] }
+
+  test2_instances:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: { get_param: test2_group_size }
+      resource_def:
+        type: Mod::EECS::SimpleInstance
+        properties:
+          name: { get_param: test2_name }
+          flavor: { get_param: test2_flavor }
+          image: { get_param: test2_image }
+          key: { get_param: key }
+          private_net: { get_param: private_net_name }
+          private_subnet: { str_replace: { params: { __name_prefix__: { get_param: private_net_name } }, template: __name_prefix__-sub } }
+          security_groups:
+            - { get_attr: [ security_groups, sg_ingress_ssh_prinet ] }
+
+outputs:
+  # ssh_bastion_ip:
+  #   description: The public IP address to access bastion into cluster.
+  #   value: { get_attr: [ssh_floating_ip, ip] }
+  # ssh_bastion_data:
+  #   description: data values returned from bastion wait_condition.
+  #   value: { get_attr: ['ssh_bastion', 'wc_data'] }
+  ansible_server_ip:
+    description: The public IP address to access ansible server.
+    value: { get_attr: [ansible_floating_ip, ip] }
+  ansible_server_data:
+    description: data values returned from ansible server wait_condition.
+    value: { get_attr: ['ansible_server', 'wc_data'] }
+  test1_instance_ip:
+    description: The private IP addresses for test1 instances.
+    value: { get_attr: [test1_instances, ip] }
+  test2_instance_ip:
+    description: The private IP addresses for test2 instances.
+    value: { get_attr: [test2_instances, ip] }

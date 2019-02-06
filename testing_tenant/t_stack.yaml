@@ -50,7 +50,7 @@ parameters:
 resources:
 ## GENERATE PRIVATE NETWORK
   network:
-    type: lib/private_network.yaml
+    type: modules/private_network.yaml
     properties:
       public_net: { get_param: public_net }
 
@@ -60,7 +60,7 @@ resources:
     properties:
       count: { get_param: cluster_size }
       resource_def:
-        type: lib/cfengine_rdp_access_instance.yaml
+        type: modules/cfengine_rdp_access_instance.yaml
         properties:
           name: { get_param: cluster_names }
           image: { get_param: image }
@@ -71,7 +71,7 @@ resources:
 
 ## GENERATE SINGLE INSTANCE GUACAMOLE GATEWAY AND FEED CLUSTER IPS INTO IT
   gateway:
-    type: lib/cfengine_web_access_instance.yaml
+    type: modules/cfengine_web_access_instance.yaml
     properties:
       name: { get_param: gw_name }
       image: { get_param: image }
@@ -81,7 +81,7 @@ resources:
       cluster_ips: { get_attr: [rdp_cluster, ip] }
 
   floating_ip:
-    type: lib/floating_ip.yaml
+    type: modules/floating_ip.yaml
     properties:
       port: { get_attr: [gateway, port] }
       public_net: { get_param: public_net }

@@ -1,0 +1,203 @@
+heat_template_version: newton
+ 
+description: Template for setting up private network and install cluster with simple ssh bastion (no CFE config)
+
+parameters:
+## CLUSTER EXTERNAL ACCESS TYPE
+  cluster_access:
+    type: string
+    label: cluster network access
+    description: network access into cluster via bastion or gateway.
+    default: wsu_only
+    constraints:
+      - allowed_values: [external_access, wsu_only, datacenter_only, prinet_only]
+
+## GLOBAL PARAMS
+  key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be installed on all nodes.
+    default: testing
+
+## NETWORK PARAMS
+  public_net:
+    type: string
+    label: Public network name or ID
+    description: Public network to attach cluster.
+    default: Public_971
+  private_net_name:
+    type: string
+    description: Private network name
+    default: test-net
+  private_net_cidr:
+    type: string
+    label: CIDR
+    description: Classless Inter-Domain Routing (CIDR) of the private network.
+    default: '10.10.11.0/24'
+  private_net_gateway:
+    type: string
+    description: Private network gateway address
+    default: '10.10.11.1'
+
+
+## INSTANCE SPECIFIC PARAMS 
+  bastion_name:
+    type: string
+    label: Bastion Name
+    description: Hostname of ballast SSH bastion created.
+    default: test-bastion
+  bastion_flavor:
+    type: string
+    label: Bastion Flavor
+    description: Type of instance (flavor) to be used for the SSH bastion.
+    default: m1.small
+  bastion_image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for SSH bastion. Please use a Debian based image.
+    default: debian-server-9-cloudimg
+  bastion_fixed_ip:
+    type: string
+    label: Bastion IP
+    description: Fixed IP address to be used for the SSH bastion.
+    default: 10.10.11.110
+
+  project_name:
+    type: string
+    label: Instance Name Prefix
+    description: Hostname prefix of instances created.
+    default: test
+  project_flavor:
+    type: string
+    label: Instance Flavor
+    description: Type of instance (flavor) to be used for the project instances.
+    default: m1.small
+  project_vol_size:
+    type: string
+    label: Volume Size
+    description: Size of volume to be created for each /dev/vda virtual disk
+    default: 10
+  project_image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for project instances.
+    default: debian-server-9-cloudimg
+
+resources:
+## GENERATE PRIVATE NETWORK, SUBNET, AND ROUTER
+  network:
+    type: Mod::EECS::PrivateNet
+    properties:
+      public_net: { get_param: public_net }
+      private_net_name: { get_param: private_net_name }
+      private_net_cidr: { get_param: private_net_cidr }
+      private_net_gateway: { get_param: private_net_gateway }
+
+## GENERATE SECURITY GROUPS
+  security_groups:
+    type: Mod::EECS::SecurityGroupsSSHOnly
+    properties:
+      cluster_access: { get_param: cluster_access }
+      private_subnet_cidr: { get_param: private_net_cidr }
+  
+## GENERATE SINGLE INSTANCE SSH BASTION/JUMP-HOST WITH FIXED_IP
+## NOTE: using a generic VMInstance with ssh security groups and and NO CFE config
+  ssh_bastion:
+    type: Mod::EECS::SimpleInstance
+    properties:
+      name: { get_param: bastion_name }
+      flavor: { get_param: bastion_flavor }
+      image: { get_param: bastion_image }
+      key: { get_param: key }
+      private_net: { get_param: private_net_name }
+      private_subnet: { str_replace: { params: { __name_prefix__: { get_param: private_net_name } }, template: __name_prefix__-sub } }
+      ip_address: { get_param: bastion_fixed_ip }
+      security_groups:
+        - { get_attr: [ security_groups, sg_ingress_ping ] }
+        - { get_attr: [ security_groups, sg_ingress_ssh ] }
+
+  ssh_floating_ip:
+    type: Mod::EECS::FloatingIp
+    properties:
+      port: { get_attr: [ssh_bastion, port] }
+      fixed_private_ip: { get_attr: [ssh_bastion, ip] }
+      # public_net: { get_param: public_net }
+
+## GENERATE 3 VOLUMES FOR PROJECT INSTANCES
+  pro_vol1:
+    type: OS::Cinder::Volume
+    properties:
+      name: { str_replace: { params: { __name_prefix__: { get_param: project_name } }, template: __name_prefix__-vol-1 } }
+      image: {get_param: project_image}
+      size: {get_param: project_vol_size}
+
+  pro_vol2:
+    type: OS::Cinder::Volume
+    properties:
+      name: { str_replace: { params: { __name_prefix__: { get_param: project_name } }, template: __name_prefix__-vol-2 } }
+      image: {get_param: project_image}
+      size: {get_param: project_vol_size}
+
+  pro_vol3:
+    type: OS::Cinder::Volume
+    properties:
+      name: { str_replace: { params: { __name_prefix__: { get_param: project_name } }, template: __name_prefix__-vol-3 } }
+      image: {get_param: project_image}
+      size: {get_param: project_vol_size}
+
+## GENERATE 3 PROJECT INSTANCES AND ATTACH TO VOLUMES
+  pro_instance1:
+    type: Mod::EECS::SimpleInstanceWithVol
+    properties:
+      name: { str_replace: { params: { __name_prefix__: { get_param: project_name } }, template: __name_prefix__-vm-1 } }
+      flavor: { get_param: project_flavor }
+      volume_id: { get_resource: pro_vol1 }
+      volume_delete_on_termination: false
+      key: { get_param: key }
+      private_net: { get_param: private_net_name }
+      private_subnet: { str_replace: { params: { __subnet_prefix__: { get_param: private_net_name } }, template: __subnet_prefix__-sub } }
+      security_groups:
+        - default
+
+  pro_instance2:
+    type: Mod::EECS::SimpleInstanceWithVol
+    properties:
+      name: { str_replace: { params: { __name_prefix__: { get_param: project_name } }, template: __name_prefix__-vm-2 } }
+      flavor: { get_param: project_flavor }
+      volume_id: { get_resource: pro_vol2 }
+      volume_delete_on_termination: false
+      key: { get_param: key }
+      private_net: { get_param: private_net_name }
+      private_subnet: { str_replace: { params: { __subnet_prefix__: { get_param: private_net_name } }, template: __subnet_prefix__-sub } }
+      security_groups:
+        - default
+
+  pro_instance3:
+    type: Mod::EECS::SimpleInstanceWithVol
+    properties:
+      name: { str_replace: { params: { __name_prefix__: { get_param: project_name } }, template: __name_prefix__-vm-3 } }
+      flavor: { get_param: project_flavor }
+      volume_id: { get_resource: pro_vol3 }
+      volume_delete_on_termination: false
+      key: { get_param: key }
+      private_net: { get_param: private_net_name }
+      private_subnet: { str_replace: { params: { __subnet_prefix__: { get_param: private_net_name } }, template: __subnet_prefix__-sub } }
+      security_groups:
+        - default
+
+outputs:
+  ssh_bastion_ip:
+    description: The public IP address to access bastion into cluster.
+    value: { get_attr: [ssh_floating_ip, ip] }
+  ssh_bastion_data:
+    description: data values returned from bastion wait_condition.
+    value: { get_attr: ['ssh_bastion', 'wc_data'] }
+  project_instance1_ip:
+    description: The private IP address to access instance 1.
+    value: { get_attr: [pro_instance1, ip] }
+  # project_instance2_ip:
+  #   description: The private IP address to access instance 2.
+  #   value: { get_attr: [pro_instance2, ip] }
+  # project_instance3_ip:
+  #   description: The private IP address to access instance 3.
+  #   value: { get_attr: [pro_instance3, ip] }

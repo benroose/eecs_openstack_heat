@@ -1,0 +1,23 @@
+OPENSTACK AVAILABLE FLAVORS (VIRTUAL MACHINE HARDWARE)
++----+-----------------+---------+----------+-----------+-------+-----------+
+| ID | Name            | RAM(MB) | Disk(GB) | Ephemeral | VCPUs | Is Public |
++----+-----------------+---------+----------+-----------+-------+-----------+
+| 1  | m1.tiny         |     512 |        1 |         0 |     1 | True      |
+| 2  | m1.small        |    2048 |       10 |         0 |     1 | True      |
+| 3  | m1.medium       |    4096 |       20 |         0 |     2 | True      |
+| 4  | m1.large        |    8192 |       40 |         0 |     4 | True      |
+| 5  | m1.large.w.swap |    8192 |       40 |         0 |     4 | True      |
+| 6  | m1.xlarge       |   16384 |       80 |         0 |     8 | True      |
++----+-----------------+---------+----------+-----------+-------+-----------+
+
+OPENSTACK AVAILABLE OS IMAGES
++--------------------------------------+------------------------------+--------+
+| ID                                   | Name                         | Status |
++--------------------------------------+------------------------------+--------+
+| 4de83869-9876-460f-81e5-090967a7d5c2 | centos-server-7-cloudimg     | active |
+| a0f3ae56-2478-4bff-8a5e-dda847a13bd5 | rhel-server-7.6-cloudimg     | active |
+| 9248fe1f-289c-43e9-a408-9d2555d7dbb2 | ubuntu-server-18.04-cloudimg | active |
+| b3fa8a4f-cb8d-4bee-97d0-0433de16bfa9 | ubuntu-server-16.04-cloudimg | active |
+| 919488a3-0f38-42d9-853b-dce89dd7b0f7 | cirros                       | active |
+| e9339e35-6d8a-4600-91f3-0b8d2c663350 | debian-server-9-cloudimg     | active |
++--------------------------------------+------------------------------+--------+

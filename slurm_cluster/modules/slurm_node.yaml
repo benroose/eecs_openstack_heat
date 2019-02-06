@@ -1,0 +1,111 @@
+heat_template_version: 2014-10-16
+
+description: Deploy a slurm node instance
+
+parameters:
+  key_name:
+    type: string
+    description: Name of key-pair to be used for the default user
+  flavor:
+    type: string
+    description: |
+      Choose an instance flavor
+  image:
+    type: string
+    label: Server image
+  private_net:
+    type: string
+    label: Private Network
+    description: Name or ID of private network for cluster
+  name:
+    type: string
+    description: Name of each slurm machine booted
+  public_key:
+    type: string
+    description: Name of public key to be used for the local slurm user
+  private_key:
+    type: string
+    description: Name of private key to be used for the local slurm user
+
+resources:
+  wait_condition:
+    type: OS::Heat::WaitCondition
+    properties:
+      handle: { get_resource: wait_handle }
+      count: 1
+      timeout: 600
+ 
+  wait_handle:
+    type: OS::Heat::WaitConditionHandle
+
+  slurm_security_group:
+        type: OS::Neutron::SecurityGroup
+        properties:
+          name: slurm_security_group
+          rules:
+            - protocol: tcp
+              port_range_min: 1024
+              port_range_max: 64511
+
+  slurm_port:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param: private_net }
+      security_groups:
+        - default
+        - { get_resource: slurm_security_group }
+
+  slurm_node:
+    type: OS::Nova::Server
+    properties:
+      key_name: { get_param: key_name }
+      image: { get_param: image }
+      networks:
+        - port: { get_resource: slurm_port }
+      flavor: { get_param: flavor }
+      name: { get_param: name }
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          params:
+            __private_key__: { get_param: private_key }
+            __public_key__: { get_param: public_key  }
+            wc_notify: { get_attr: ['wait_handle', 'curl_cli'] }
+          template: |
+            #!/bin/bash
+
+            # Install required packages for slurm
+            apt-get update
+            apt-get install -y slurmd nfs-common
+
+            # Create local slurm user
+            useradd -m slurmuser
+            mkdir -p /home/slurmuser/.ssh
+            echo "__public_key__" > /home/slurmuser/.ssh/authorized_keys
+            echo "__private_key__" > /home/slurmuser/.ssh/id_rsa
+
+            # Put ssh config
+            cat > /home/slurmuser/.ssh/config <<EOF
+            Host *
+            StrictHostKeyChecking no
+            UserKnownHostsFile=/dev/null
+            EOF
+            
+            # Fix perms
+            chmod 600 /home/slurmuser/.ssh/id_rsa
+            chown -R slurmuser. /home/slurmuser/.ssh
+            chown -R slurmuser. /home/slurmuser
+
+            cat > /etc/sudoers.d/slurmuser << EOF
+            Cmnd_Alias SLURM_CMDS = /bin/mv /tmp/hosts /etc/hosts, /bin/mv /tmp/munge.key /etc/munge/munge.key, /bin/systemctl restart munge, /bin/systemctl restart slurmd, /bin/mv /tmp/slurm.conf /etc/slurm-llnl/slurm.conf, /bin/chmod 400 /etc/munge/munge.key, /bin/chown munge. /etc/munge/munge.key, /usr/bin/tee /etc/fstab
+            slurmuser ALL=(ALL) NOPASSWD: ALL
+            EOF
+            chmod 440 /etc/sudoers.d/slurmuser
+
+            # Notify Heat we're done
+            wc_notify --insecure --data-binary '{"status": "SUCCESS"}'
+
+outputs:
+  node_param:
+    description: The IP address of this slurm instance.
+    value: { list_join: ['@', [ get_attr: [slurm_node, first_address], get_attr: [slurm_node, name] , '8' , '3500' ] ]  }

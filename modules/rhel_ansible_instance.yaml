@@ -1,0 +1,196 @@
+heat_template_version: newton
+
+description: Template to create an Ansible Engine on RHEL instance
+
+## DEFINE PARAMS OR PULL IN FROM UPSTREAM TEMPLATE
+parameters:
+## VIRTUAL MACHINE
+  name:
+    type: string
+    label: Instance name
+    description: Name of server instance created.
+    default: cfe-instance
+  cluster_type:
+    type: string
+    label: cluster access type
+    description: Access type for entire cluster.
+    default: test
+  metadata:
+    type: json
+    label: json format metadata
+    description: metadata pushed into the instance.
+    default: []
+  image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for server. Please use a Debian based image.
+    default: debian_server-9-cloudimg
+  flavor:
+    type: string
+    label: Flavor
+    description: Type of instance (flavor) to be used on the compute instance.
+    default: m1.small
+  key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be installed on the compute instance.
+    default: test
+
+## VOLUME BLOCK DEVICE
+  volume_id:
+    type: string
+    label: Volume_ID
+    description: ID of existing cinder volume to use as mapped device - REQUIRED FOR INPUT
+  boot_index:
+    type: number
+    label: Boot_Index
+    description: Boot order index for instance
+    default: 0
+  block_device_name:
+    type: string
+    label: Device_Name
+    description: Name of device located in /dev/ on instance root directory (depreciated)
+    default: vda
+  volume_delete_on_termination:
+    type: boolean
+    label: Delete_dev_on_term
+    description: Delete volume on termination of instance
+    default: false
+
+## NETWORK
+  private_net:
+    type: string
+    label: Private network name or ID
+    description: Network to attach server to.
+    default: private
+  private_subnet:
+    type: string
+    label: Private subnet name or ID
+    description: Subnet to attach server to.
+    default: private
+  security_groups:
+    type: comma_delimited_list
+    label: Security Group names or IDs
+    description: list of security groups to association with port.
+  ip_address:
+    type: string
+    label: Defined IP Address
+    description: user defined fixed ip address to association with port.
+    default: dynamic_ip
+
+
+## WAIT CONDITIONS
+  wc_timeout:
+    type: number
+    description: Timeout for WaitCondition, depends on your image and environment
+    default: 1000
+  wc_count:
+    type: number
+    description: Count of total WaitCondition events
+    default: 3
+
+## CLOUD-INIT USER DATA PARAMS
+  script_var1:
+    type: string
+    description: generic environment variable to pass to cloud-init script
+    default: no_value
+  sub_organization:
+    type: string
+    description: RHEL Satellite Server Subscription organization
+    default: wsu_eecs
+  sub_activation_key:
+    type: string
+    description: RHEL Satellite Server Subscription activation key
+    default: RHEL 7 OpenStack Test Servers
+
+conditions:
+  use_dynamic_ip: { equals: [{get_param: ip_address}, 'dynamic_ip'] }
+
+resources: 
+
+## DEFINE WAIT CONDITIONS
+  # wait_condition:
+  #   type: OS::Heat::WaitCondition
+  #   properties:
+  #     handle: { get_resource: wait_handle }
+  #     count: { get_param: wc_count }
+  #     timeout: { get_param: wc_timeout }
+
+  # wait_handle:
+  #   type: OS::Heat::WaitConditionHandle
+
+## DEFINE NETWORK PORTS AND LINK TO SECURITY GROUPS
+  dynamic_ip_port:
+    condition: use_dynamic_ip
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param: private_net }
+      security_groups: { get_param: security_groups }
+
+  fixed_ip_port:
+    condition: { not: use_dynamic_ip }
+    type: OS::Neutron::Port
+    properties:
+      network: { get_param: private_net }
+      security_groups: { get_param: security_groups }
+      fixed_ips:
+        - subnet: { get_param: private_subnet }
+          ip_address: { get_param: ip_address }
+
+## DEFINE VM SERVER WITH VOLUME (depending on whether to use a dynamic or fixed ip address)
+  ansible_server:
+    type: OS::Nova::Server
+    properties:
+      name: { get_param: name }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key }
+      # IMAGE IS DEFINED AT VOLUME CREATION - image: { get_param: image }
+      block_device_mapping_v2:
+        - volume_id: { get_param: volume_id }
+          boot_index: { get_param: boot_index }
+          # DEPRECIATED device_name: { get_param: block_device_name }
+          delete_on_termination: { get_param: volume_delete_on_termination }
+      networks:
+        - port: { if: ["use_dynamic_ip", {get_resource: dynamic_ip_port}, {get_resource: fixed_ip_port}] }
+      # metadata: { get_param: metadata }
+        # cluster_name: { get_param: 'OS::stack_name' }
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          template: |
+            #!/bin/bash
+            # RHSS REGISTRATION OF HOST
+            rpm -vi http://rhss.wichita.edu/pub/katello-ca-consumer-latest.noarch.rpm
+            subscription-manager register --org='__sub_organization__' --activationkey='__sub_activation_key__'
+            # subscription-manager attach --pool=4028349d5d31deff015d323430ca03e7
+            subscription-manager repos --disable='*'
+            subscription-manager repos --enable=rhel-7-server-rpms --enable=rhel-7-server-extras-rpms --enable=rhel-7-server-rh-common-rpms --enable=rhel-7-server-satellite-tools-6.2-rpms
+            yum clean all
+            # yum repolist
+
+            # GENERAL TOOLS AND ANSIBLE INSTALLATION
+            yum install -y python2 wget emacs nano
+            yum install -y ansible
+
+            # REMOVED - HANDLE OPENSTACK CLIENT TOOL INSTALLATION WITH ANSIBLE?
+            # yum install -y python-ceilometer client python-cinderclient python-glanceclient python-heatclient python-keystoneclient python-neutronclient python-novaclient python-swiftclient python-openstackclient
+
+          params:
+            __sub_activation_key__: { get_param: sub_activation_key }
+            __sub_organization__: { get_param: sub_organization }
+            # $wc_notify: { get_attr: ['wait_handle', 'curl_cli'] }
+
+## DEFINE OUTPUTS TO UPSTREAM TEMPLATE
+outputs:
+  name:
+    description: Name of the instance.
+    value: { get_attr: [ansible_server, name] }
+  ip:
+    description: The IP address of the instance.
+    value: { get_attr: [ansible_server, first_address] }
+  port:
+    description: The network port of the instance.
+    value: { if: [use_dynamic_ip, {get_resource: dynamic_ip_port}, {get_resource: fixed_ip_port}] }
+  # wc_data:
+  #   description: data values returned from wait_condition.
+  #   value: { get_attr: ['wait_condition', 'data'] }
