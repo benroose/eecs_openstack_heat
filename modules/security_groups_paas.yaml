@@ -4,10 +4,10 @@ description: Template to create security groups for paas projects
 
 ## DEFINE PARAMS OR PULL IN FROM UPSTREAM TEMPLATE
 parameters:
-  cluster_access:
+  stack_access:
     type: string
-    label: cluster network access
-    description: network access into cluster via bastion or gateway.
+    label: stack network access
+    description: network access into stack instances.
     default: wsu_only
 
   private_subnet_cidr:
@@ -22,61 +22,64 @@ parameters:
     description: Subnet cidr to scope down security groups to wsu private vpn network.
     default: 10.250.0.0/24
 
-  wsu_privatenet_cidr:
-    type: string
-    label: wsu private cidr
-    description: Subnet cidr to scope down security groups to wsu private wired and wireless networks 
-    default: 172.0.0.0/8
+  datacenter_cidrs:
+    type: comma_delimited_list
+    description: Subnet cidrs to scope down security groups to eecs data center networks.
+    default:
+      - 156.26.250.0/25
+      - 192.168.250.0/24
+      - 192.168.251.0/24
 
-  wsu_publicnet_cidr:
-    type: string
-    label: wsu public cidr
-    description: TRY NOT TO USE - Subnet cidr to scope down security groups to wsu older public networks.
-    default: 156.26.0.0/16
+  wsu_limited_cidrs:
+    type: comma_delimited_list
+    description: Subnet cidrs to scope down security groups to very limited wsu networks.
+    default:
+      - 10.250.0.0/24
+      - 156.26.250.0/25
+      - 192.168.251.0/24
 
-  eecs_engrnet_cidr:
-    type: string
-    label: eecs engineering cidr
-    description: Subnet cidr to scope down security groups to eecs engineering area 43 public network.
-    default: 156.26.43.0/24
+  wsu_general_cidrs:
+    type: comma_delimited_list
+    description: Subnet cidrs to scope down security groups to general wsu networks.
+    default:
+      - 10.250.0.0/24
+      - 172.0.0.0/8
+      - 156.26.0.0/16
+      - 156.26.250.0/25
+      - 192.168.250.0/24
+      - 192.168.251.0/24
+    
+  ssh_ports:
+    type: comma_delimited_list
+    description: Standard port used for SSH
+    default: "22"
 
-  eecs_publicnet_cidr:
-    type: string
-    label: eecs public cidr
-    description: Subnet cidr to scope down security groups to eecs data center public networks.
-    default: 156.26.250.0/25
-
-  ipmi_net_cidr:
-    type: string
-    label: ipmi cidr
-    description: Subnet cidr to scope down security groups to eecs datacenter ipmi internal network.
-    default: 192.168.250.0/24
-
-  infrastructure_net_cidr:
-    type: string
-    label: infrastructure cidr
-    description: Subnet cidr to scope down security groups to eecs datacenter infrastructure network.
-    default: 192.168.251.0/24
+  web_ports:
+    type: comma_delimited_list
+    description: Standard ports used for HTTP/HTTPS
+    default: "80,443"
 
 conditions:
+
+## Set conditions for network access into stack instances
   external_access:
     equals:
-      - get_param: cluster_access
+      - get_param: stack_access
       - external_access
 
   wsu_access:
     equals:
-     - get_param: cluster_access
+     - get_param: stack_access
      - wsu_only
 
   datacenter_access:
     equals:
-     - get_param: cluster_access
+     - get_param: stack_access
      - datacenter_only
 
   prinet_access:
     equals:
-     - get_param: cluster_access
+     - get_param: stack_access
      - prinet_only
 
 resources: 
@@ -95,21 +98,21 @@ resources:
             port_range_min: 22
             port_range_max: 22
 
-## DEFINE DEFAULT INTERNAL PING SECURITY GROUPS
+# ## DEFINE DEFAULT INTERNAL PING SECURITY GROUPS
   sg_ingress_ping:
       type: OS::Neutron::SecurityGroup
       properties:
         name: ingress ping eecs dc net
         description: PING ingress from eecs datacenter networks only
         rules:
-          - remote_ip_prefix: { get_param: eecs_publicnet_cidr }
-            protocol: icmp
-          - remote_ip_prefix: { get_param: infrastructure_net_cidr }
-            protocol: icmp
-          - remote_ip_prefix: { get_param: ipmi_net_cidr }
-            protocol: icmp
+          repeat:
+            for_each:
+              <%cidr%>: { get_param: datacenter_cidrs }
+            template:
+              remote_ip_prefix: <%cidr%>
+              protocol: icmp
 
-## DEFINE SSH SECURITY GROUPS
+# ## DEFINE SSH SECURITY GROUPS
   sg_ingress_ssh_external:
       type: OS::Neutron::SecurityGroup
       condition: external_access
@@ -118,32 +121,25 @@ resources:
         description: SSH ingress from ANY network
         rules:
           - protocol: tcp
-            port_range_min: 22
-            port_range_max: 22
+            port_range_min: { get_param: ssh_port }
+            port_range_max: { get_param: ssh_port }
 
   sg_ingress_ssh_wsu:
       type: OS::Neutron::SecurityGroup
       condition: wsu_access
       properties:
-        name: ingress ssh wsu net
+        name: ingress ssh wsu limited net
         description: SSH ingress from WSU VPN and EECS data center networks only
         rules:
-          - remote_ip_prefix: { get_param: wsu_vpnnet_cidr }
-            protocol: tcp
-            port_range_min: 22
-            port_range_max: 22
-          - remote_ip_prefix: { get_param: eecs_publicnet_cidr }
-            protocol: tcp
-            port_range_min: 22
-            port_range_max: 22
-          - remote_ip_prefix: { get_param: infrastructure_net_cidr }
-            protocol: tcp
-            port_range_min: 22
-            port_range_max: 22
-          - remote_ip_prefix: { get_param: ipmi_net_cidr }
-            protocol: tcp
-            port_range_min: 22
-            port_range_max: 22
+          repeat:
+            for_each:
+              <%cidr%>: { get_param: wsu_limited_cidrs }
+              <%port%>: { get_param: ssh_ports }
+            template:
+              remote_ip_prefix: <%cidr%>
+              protocol: tcp
+              port_range_min: <%port%>
+              port_range_max: <%port%>
 
   sg_ingress_ssh_datacenter:
       type: OS::Neutron::SecurityGroup
@@ -152,67 +148,49 @@ resources:
         name: ingress ssh dc net
         description: SSH ingress from EECS data center and WSU VPN networks only
         rules:
-          - remote_ip_prefix: { get_param: eecs_publicnet_cidr }
-            protocol: tcp
-            port_range_min: 22
-            port_range_max: 22
-          - remote_ip_prefix: { get_param: infrastructure_net_cidr }
-            protocol: tcp
-            port_range_min: 22
-            port_range_max: 22
-          - remote_ip_prefix: { get_param: ipmi_net_cidr }
-            protocol: tcp
-            port_range_min: 22
-            port_range_max: 22
+          repeat:
+            for_each:
+              <%cidr%>: { get_param: datacenter_cidrs }
+              <%port%>: { get_param: ssh_ports }
+            template:
+              remote_ip_prefix: <%cidr%>
+              protocol: tcp
+              port_range_min: <%port%>
+              port_range_max: <%port%>
+
 
 ## DEFINE WEB SECURITY GROUPS
+  sg_ingress_web_external:
+      type: OS::Neutron::SecurityGroup
+      condition: external_access
+      properties:
+        name: ingress web WIDE OPEN
+        description: HTTP/HTTPS ingress from ANY network
+        rules:
+          repeat:
+            for_each:
+              <%port%>: { get_param: web_ports }
+            template:
+              protocol: tcp
+              port_range_min: <%port%>
+              port_range_max: <%port%>
+
   sg_ingress_web_wsu:
       type: OS::Neutron::SecurityGroup
       condition: wsu_access
       properties:
         name: ingress web wsu net
-        description: HTTP/HTTPS ingress from WSU VPN and EECS data center networks only
+        description: HTTP/HTTPS ingress from WSU general networks
         rules:
-          - remote_ip_prefix: { get_param: wsu_vpnnet_cidr }
-            protocol: tcp
-            port_range_min: 80
-            port_range_max: 80
-          - remote_ip_prefix: { get_param: eecs_publicnet_cidr }
-            protocol: tcp
-            port_range_min: 80
-            port_range_max: 80
-          - remote_ip_prefix: { get_param: eecs_engrnet_cidr }
-            protocol: tcp
-            port_range_min: 80
-            port_range_max: 80
-          - remote_ip_prefix: { get_param: wsu_privatenet_cidr }
-            protocol: tcp
-            port_range_min: 80
-            port_range_max: 80
-          - remote_ip_prefix: { get_param: infrastructure_net_cidr }
-            protocol: tcp
-            port_range_min: 80
-            port_range_max: 80
-          - remote_ip_prefix: { get_param: wsu_vpnnet_cidr }
-            protocol: tcp
-            port_range_min: 443
-            port_range_max: 443
-          - remote_ip_prefix: { get_param: wsu_privatenet_cidr }
-            protocol: tcp
-            port_range_min: 443
-            port_range_max: 443
-          - remote_ip_prefix: { get_param: eecs_publicnet_cidr }
-            protocol: tcp
-            port_range_min: 443
-            port_range_max: 443
-          - remote_ip_prefix: { get_param: eecs_engrnet_cidr }
-            protocol: tcp
-            port_range_min: 443
-            port_range_max: 443
-          - remote_ip_prefix: { get_param: infrastructure_net_cidr }
-            protocol: tcp
-            port_range_min: 443
-            port_range_max: 443
+          repeat:
+            for_each:
+              <%cidr%>: { get_param: wsu_general_cidrs }
+              <%port%>: { get_param: web_ports }
+            template:
+              remote_ip_prefix: <%cidr%>
+              protocol: tcp
+              port_range_min: <%port%>
+              port_range_max: <%port%>
 
 
 ## DEFINE OUTPUTS TO UPSTREAM TEMPLATE
