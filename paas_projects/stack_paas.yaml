@@ -1,13 +1,13 @@
 heat_template_version: newton
  
-description: Template for setting up private network and install cluster with simple ssh bastion (no CFE config)
+description: Template for setting up private network and install stack with simple ssh bastion (no CFE config)
 
 parameters:
-## CLUSTER EXTERNAL ACCESS TYPE
-  cluster_access:
+## STACK EXTERNAL ACCESS TYPE
+  stack_access:
     type: string
-    label: cluster network access
-    description: network security group ingress access to cluster.
+    label: stack network access
+    description: network security group ingress access to stack instances.
     default: wsu_only
     constraints:
       - allowed_values: [external_access, wsu_only, datacenter_only, prinet_only]
@@ -32,7 +32,7 @@ parameters:
   public_net:
     type: string
     label: Public network name or ID
-    description: Public network to attach cluster.
+    description: Public network to attach stack.
     default: Public_971
   private_net_name:
     type: string
@@ -112,7 +112,7 @@ resources:
   security_groups:
     type: Mod::EECS::SecurityGroupsPaaS
     properties:
-      cluster_access: { get_param: cluster_access }
+      stack_access: { get_param: stack_access }
       private_subnet_cidr: { get_param: private_net_cidr }
   
 ## GENERATE SINGLE INSTANCE SSH BASTION/JUMP-HOST WITH FIXED_IP
