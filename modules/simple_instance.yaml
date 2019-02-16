@@ -25,6 +25,11 @@ parameters:
     label: Key name
     description: Name of key-pair to be installed on the compute instance.
     default: test.pem
+  metadata:
+    type: json
+    label: Metadata
+    description: List of key:value pairs to associate with the compute instance.
+    default: {}
 
 ## NETWORK
   private_net:
@@ -104,8 +109,8 @@ resources:
       key_name: { get_param: key }
       networks:
         - port: { if: ["use_dynamic_ip", {get_resource: dynamic_ip_port}, {get_resource: fixed_ip_port}] }
-      metadata:
-        cluster_name: { get_param: 'OS::stack_name' }
+      metadata: { get_param: metadata }
+        # cluster_name: { get_param: 'OS::stack_name' }
       # user_data_format: RAW
       # user_data: 
       #   str_replace:

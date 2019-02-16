@@ -1,0 +1,263 @@
+heat_template_version: newton
+
+description: Template to create security groups for paas projects
+
+## DEFINE PARAMS OR PULL IN FROM UPSTREAM TEMPLATE
+parameters:
+  stack_access:
+    type: string
+    label: stack network access
+    description: network access into stack instances.
+    default: wsu_only
+
+  private_subnet_cidr:
+    type: string
+    label: private cidr
+    description: Subnet cidr to scope down security groups to private tenant network.
+    default: 10.10.11.0/24
+
+  wsu_vpnnet_cidr:
+    type: string
+    label: wsu vpn cidr
+    description: Subnet cidr to scope down security groups to wsu private vpn network.
+    default: 10.250.0.0/24
+
+  datacenter_cidrs:
+    type: comma_delimited_list
+    description: Subnet cidrs to scope down security groups to eecs data center networks.
+    default:
+      - 156.26.250.0/25
+      - 192.168.250.0/24
+      - 192.168.251.0/24
+
+  wsu_limited_cidrs:
+    type: comma_delimited_list
+    description: Subnet cidrs to scope down security groups to very limited wsu networks.
+    default:
+      - 10.250.0.0/24
+      - 156.26.250.0/25
+      - 192.168.251.0/24
+
+  wsu_general_cidrs:
+    type: comma_delimited_list
+    description: Subnet cidrs to scope down security groups to general wsu networks.
+    default:
+      - 10.250.0.0/24
+      - 172.0.0.0/8
+      - 156.26.0.0/16
+      - 156.26.250.0/25
+      - 192.168.250.0/24
+      - 192.168.251.0/24
+    
+  ssh_port:
+    type: string
+    description: Standard port used for SSH
+    default: "22"
+
+  web_ports:
+    type: comma_delimited_list
+    description: Standard ports used for HTTP/HTTPS
+    default: "80,443"
+
+  db_port:
+    type: string
+    description: Standard port used for database (mysql)
+    default: "3306"
+
+  memcached_port:
+    type: string
+    description: Standard port used for memcached
+    default: "11211"
+
+
+conditions:
+
+## Set conditions for network access into stack instances
+  external_access:
+    equals:
+      - get_param: stack_access
+      - external_access
+
+  wsu_access:
+    equals:
+     - get_param: stack_access
+     - wsu_only
+
+  datacenter_access:
+    equals:
+     - get_param: stack_access
+     - datacenter_only
+
+  prinet_access:
+    equals:
+     - get_param: stack_access
+     - prinet_only
+
+resources: 
+
+## DEFINE DEFAULT PRIVATE NETWORK SECURITY GROUPS
+  sg_ingress_ssh_prinet:
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name: ingress ssh ping priv subnet
+        description: SSH and PING ingress from private network only
+        rules:
+          - remote_ip_prefix: { get_param: private_subnet_cidr }
+            protocol: icmp
+          - remote_ip_prefix: { get_param: private_subnet_cidr }
+            protocol: tcp
+            port_range_min: { get_param: ssh_port }
+            port_range_max: { get_param: ssh_port }
+
+  sg_ingress_web_prinet:
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name: ingress web priv subnet
+        description: HTTP/HTTPS ingress from private net
+        rules:
+          repeat:
+            for_each:
+              <%port%>: { get_param: web_ports }
+            template:
+              remote_ip_prefix: { get_param: private_subnet_cidr }
+              protocol: tcp
+              port_range_min: <%port%>
+              port_range_max: <%port%>
+
+  sg_ingress_db_prinet:
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name: ingress mysql priv subnet
+        description: mysql database ingress from private network only
+        rules:
+          - remote_ip_prefix: { get_param: private_subnet_cidr }
+            protocol: tcp
+            port_range_min: { get_param: db_port }
+            port_range_max: { get_param: db_port }
+
+  sg_ingress_memcached_prinet:
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name: ingress memcached ping priv subnet
+        description: memcached ingress from private network only
+        rules:
+          - remote_ip_prefix: { get_param: private_subnet_cidr }
+            protocol: tcp
+            port_range_min: { get_param: memcached_port }
+            port_range_max: { get_param: memcached_port }
+
+# ## DEFINE DEFAULT DATA CENTER SECURITY GROUPS
+  sg_ingress_ping:
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name: ingress ping eecs dc net
+        description: PING ingress from eecs datacenter networks only
+        rules:
+          repeat:
+            for_each:
+              <%cidr%>: { get_param: datacenter_cidrs }
+            template:
+              remote_ip_prefix: <%cidr%>
+              protocol: icmp
+
+# ## DEFINE SSH SECURITY GROUPS
+  sg_ingress_ssh_external:
+      type: OS::Neutron::SecurityGroup
+      condition: external_access
+      properties:
+        name: ingress ssh WIDE OPEN
+        description: SSH ingress from ANY network
+        rules:
+          - protocol: tcp
+            port_range_min: { get_param: ssh_port }
+            port_range_max: { get_param: ssh_port }
+
+  sg_ingress_ssh_wsu:
+      type: OS::Neutron::SecurityGroup
+      condition: wsu_access
+      properties:
+        name: ingress ssh wsu limited net
+        description: SSH ingress from WSU VPN and EECS data center networks only
+        rules:
+          repeat:
+            for_each:
+              <%cidr%>: { get_param: wsu_limited_cidrs }
+            template:
+              remote_ip_prefix: <%cidr%>
+              protocol: tcp
+              port_range_min: { get_param: ssh_port }
+              port_range_max: { get_param: ssh_port }
+
+  sg_ingress_ssh_datacenter:
+      type: OS::Neutron::SecurityGroup
+      condition: datacenter_access
+      properties:
+        name: ingress ssh dc net
+        description: SSH ingress from EECS data center and WSU VPN networks only
+        rules:
+          repeat:
+            for_each:
+              <%cidr%>: { get_param: datacenter_cidrs }
+            template:
+              remote_ip_prefix: <%cidr%>
+              protocol: tcp
+              port_range_min: { get_param: ssh_port }
+              port_range_max: { get_param: ssh_port }
+
+
+## DEFINE WEB SECURITY GROUPS
+  sg_ingress_web_external:
+      type: OS::Neutron::SecurityGroup
+      condition: external_access
+      properties:
+        name: ingress web WIDE OPEN
+        description: HTTP/HTTPS ingress from ANY network
+        rules:
+          repeat:
+            for_each:
+              <%port%>: { get_param: web_ports }
+            template:
+              protocol: tcp
+              port_range_min: <%port%>
+              port_range_max: <%port%>
+
+  sg_ingress_web_wsu:
+      type: OS::Neutron::SecurityGroup
+      condition: wsu_access
+      properties:
+        name: ingress web wsu net
+        description: HTTP/HTTPS ingress from WSU general networks
+        rules:
+          repeat:
+            for_each:
+              <%cidr%>: { get_param: wsu_limited_cidrs }
+              <%port%>: { get_param: web_ports }
+            template:
+              remote_ip_prefix: <%cidr%>
+              protocol: tcp
+              port_range_min: <%port%>
+              port_range_max: <%port%>
+
+## DEFINE OUTPUTS TO UPSTREAM TEMPLATE
+outputs:
+  sg_ingress_ping:
+    description: PING ingress from WSU public network
+    value: { get_resource: sg_ingress_ping }
+  sg_ingress_ssh_prinet:
+    description: SSH and PING ingress from private network only
+    value: { get_resource: sg_ingress_ssh_prinet }
+  sg_ingress_web_prinet:
+    description: HTTP/HTTPS ingress from private network only
+    value: { get_resource: sg_ingress_web_prinet }
+  sg_ingress_ssh:
+    description: SSH ingress from defined external networks
+    value: { if: [external_access, {get_resource: sg_ingress_ssh_external}, { if: [wsu_access, {get_resource: sg_ingress_ssh_wsu}, {get_resource: sg_ingress_ssh_datacenter}] } ] }
+  sg_ingress_web:
+    description: HTTP/HTTPS ingress from defined external networks
+    value: { if: [external_access, {get_resource: sg_ingress_web_external}, { if: [wsu_access, {get_resource: sg_ingress_web_wsu}, {get_resource: sg_ingress_web_datacenter}] } ] }
+  sg_ingress_db:
+    description: mysql database ingress from private network only
+    value: { get_resource: sg_ingress_db_prinet }
+  sg_ingress_memcached:
+    description: memcached ingress from private network only
+    value: { get_resource: sg_ingress_memcached_prinet }
