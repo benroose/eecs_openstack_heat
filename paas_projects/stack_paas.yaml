@@ -1,6 +1,6 @@
 heat_template_version: newton
  
-description: Template for setting up private network and install stack with simple ssh bastion (no CFE config)
+description: Template for paas projects using private network and instance stack
 
 parameters:
 ## STACK EXTERNAL ACCESS TYPE
@@ -177,7 +177,7 @@ resources:
       security_groups:
         - { get_attr: [ security_groups, sg_ingress_ping ] }
         - { get_attr: [ security_groups, sg_ingress_ssh ] }
-        - { get_attr: [ security_groups, sg_ingress_web ] }
+        # - { get_attr: [ security_groups, sg_ingress_web ] }
 
   ssh_floating_ip:
     condition: { not: bastion_enabled }
