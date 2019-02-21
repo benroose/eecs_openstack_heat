@@ -1,6 +1,6 @@
 heat_template_version: newton
  
-description: Template for paas projects using private network and instance stack
+description: Template for CFEngine based paas projects using private network and instance stack
 
 parameters:
 ## STACK EXTERNAL ACCESS TYPE
