@@ -1,0 +1,49 @@
+# Custom Parameters for Math testing guacamole project heat templates
+
+parameter_defaults:
+
+## CLUSTER PARAMS
+  cluster_access: wsu_only
+
+## USER PARAMS
+  key: testing
+
+## EXISTING RESOURCES
+
+## METADATA FOR INSTANCES
+#  metadata:
+
+## NETWORK PARAMS
+  public_net: Public_971
+  private_net_name: private-net
+  private_net_cidr: '10.10.11.0/24'
+  private_net_gateway: '10.10.11.1'
+
+## CFE POLICYHUB PARAMS
+  policyhub_enabled: yes
+  policyhub_name: policyhub-dev
+  policyhub_flavor: m1.medium
+  policyhub_vol_size: 20
+  policyhub_image: ubuntu-server-18.04-cloudimg
+  policyhub_fixed_ip: 10.10.11.110
+  cfe_policyhub: 10.10.11.110
+
+
+## PROJECT INSTANCE PARAMS
+  project_name: guac-test
+  project_flavor: m1.small
+  project_vol_size: 20
+  project_image: ubuntu-server-18.04-cloudimg
+
+
+resource_registry:
+  Mod::EECS::CFEInstance: ../modules/cfe_instance.yaml
+  Mod::EECS::CFEInstanceWithVol: ../modules/cfe_instance_with_volume.yaml
+  Mod::EECS::FloatingIp: ../modules/floating_ip.yaml
+  Mod::EECS::PrivateNet: ../modules/private_network.yaml
+  Mod::EECS::SecurityGroups: ../modules/security_groups.yaml
+  Mod::EECS::SecurityGroupsPaaS: ../modules/security_groups_paas.yaml
+  Mod::EECS::SecurityGroupsCFE: ../modules/security_groups_cfe.yaml
+  Mod::EECS::SecurityGroupsSSHOnly: ../modules/security_groups_ssh_only.yaml
+  Mod::EECS::SimpleInstance: ../modules/simple_instance.yaml
+  Mod::EECS::SimpleInstanceWithVol: ../modules/simple_instance_with_volume.yaml

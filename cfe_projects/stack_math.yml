@@ -1,0 +1,240 @@
+heat_template_version: newton
+ 
+description: Template for paas projects using private network and instance stack
+
+parameters:
+## STACK EXTERNAL ACCESS TYPE
+  stack_access:
+    type: string
+    label: stack network access
+    description: network security group ingress access to stack instances.
+    default: wsu_only
+    constraints:
+      - allowed_values: [external_access, wsu_only, datacenter_only, prinet_only]
+
+## GLOBAL PARAMS
+  key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be installed on all nodes.
+    default: testing
+
+## NETWORK PARAMS
+  public_net:
+    type: string
+    label: Public network name or ID
+    description: Public network to attach stack.
+    default: Public_971
+  private_net_name:
+    type: string
+    description: Private network name
+    default: test-net
+  private_net_cidr:
+    type: string
+    label: CIDR
+    description: Classless Inter-Domain Routing (CIDR) of the private network.
+    default: '10.10.11.0/24'
+  private_net_gateway:
+    type: string
+    description: Private network gateway address
+    default: '10.10.11.1'
+
+
+## INSTANCE SPECIFIC PARAMS
+  policyhub_enabled:
+    type: string
+    label: CFE Policyhub
+    description: enable a local CFE policyhub within stack.
+    default: yes
+    constraints:
+      - allowed_values: [yes, no]
+
+  policyhub_name:
+    type: string
+    label: Policyhub Name
+    description: Hostname of ballast SSH policyhub created.
+    default: test-policyhub
+  policyhub_flavor:
+    type: string
+    label: Policyhub Flavor
+    description: Type of instance (flavor) to be used for the SSH policyhub.
+    default: m1.small
+  policyhub_image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for SSH policyhub. Please use a Debian based image.
+    default: debian-server-9-cloudimg
+  policyhub_vol_size:
+    type: string
+    label: Volume Size
+    description: Size of volume to be created for each /dev/vda virtual disk
+    default: 10
+  policyhub_fixed_ip:
+    type: string
+    label: Policyhub IP
+    description: Fixed IP address to be used for the SSH policyhub.
+    default: 10.10.11.110
+  cfe_policyhub:
+    type: string
+    description: IP address of CFEngine policyhub, defaults to CS policyhub-dev.
+    default: 156.26.250.43
+
+  project_name:
+    type: string
+    label: Instance Name Prefix
+    description: Hostname prefix of instances created.
+    default: test
+  project_flavor:
+    type: string
+    label: Instance Flavor
+    description: Type of instance (flavor) to be used for the project instances.
+    default: m1.small
+  project_vol_size:
+    type: string
+    label: Volume Size
+    description: Size of volume to be created for each /dev/vda virtual disk
+    default: 10
+  project_image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for project instances.
+    default: debian-server-9-cloudimg
+
+conditions:
+  policyhub_enabled:
+    equals:
+      - get_param: policyhub_enabled
+      - yes
+
+resources:
+## GENERATE PRIVATE NETWORK, SUBNET, AND ROUTER
+  network:
+    type: Mod::EECS::PrivateNet
+    properties:
+      public_net: { get_param: public_net }
+      private_net_name: { get_param: private_net_name }
+      private_net_cidr: { get_param: private_net_cidr }
+      private_net_gateway: { get_param: private_net_gateway }
+
+## GENERATE SECURITY GROUPS
+  security_groups:
+    type: Mod::EECS::SecurityGroupsCFE
+    properties:
+      stack_access: { get_param: stack_access }
+      private_subnet_cidr: { get_param: private_net_cidr }
+  
+  policyhub_vol1:
+    type: OS::Cinder::Volume
+    properties:
+      name: { str_replace: { params: { __name_prefix__: { get_param: policyhub_name } }, template: __name_prefix__-vol-1 } }
+      image: {get_param: policyhub_image}
+      size: {get_param: policyhub_vol_size}
+
+## GENERATE SINGLE INSTANCE SSH POLICYHUB/JUMP-HOST WITH FIXED_IP
+## NOTE: using a generic VMInstance with ssh security groups and and NO CFE config
+  policyhub:
+    # condition: policyhub_enabled
+    type: Mod::EECS::CFEInstanceWithVol
+    properties:
+      name: { get_param: policyhub_name }
+      flavor: { get_param: policyhub_flavor }
+      volume_id: { get_resource: policyhub_vol1 }
+      volume_delete_on_termination: false
+      key: { get_param: key }
+      policyhub: { get_param: cfe_policyhub }
+      private_net: { get_param: private_net_name }
+      private_subnet: { str_replace: { params: { __name_prefix__: { get_param: private_net_name } }, template: __name_prefix__-sub } }
+      ip_address: { get_param: policyhub_fixed_ip }
+      security_groups:
+        - { get_attr: [ security_groups, sg_ingress_ping ] }
+        - { get_attr: [ security_groups, sg_ingress_ssh ] }
+        - { get_attr: [ security_groups, sg_ingress_cfe_prinet ] }
+
+  floating_ip_policyhub:
+    # condition: policyhub_enabled
+    type: Mod::EECS::FloatingIp
+    properties:
+      port: { get_attr: [policyhub, port] }
+      private_ip: { get_attr: [policyhub, ip] }
+      public_net: { get_param: public_net }
+
+## GENERATE VOLUME FOR PROJECT INSTANCES
+  pro_vol1:
+    type: OS::Cinder::Volume
+    properties:
+      name: { str_replace: { params: { __name_prefix__: { get_param: project_name } }, template: __name_prefix__-vol-1 } }
+      image: {get_param: project_image}
+      size: {get_param: project_vol_size}
+
+  pro_vol2:
+    type: OS::Cinder::Volume
+    properties:
+      name: { str_replace: { params: { __name_prefix__: { get_param: project_name } }, template: __name_prefix__-vol-2 } }
+      image: {get_param: project_image}
+      size: {get_param: project_vol_size}
+
+## GENERATE PROJECT INSTANCE AND ATTACH TO VOLUME
+  pro_instance1:
+    depends_on: policyhub
+    type: Mod::EECS::CFEInstanceWithVol
+    properties:
+      name: { str_replace: { params: { __name_prefix__: { get_param: project_name } }, template: __name_prefix__-vm-1 } }
+      flavor: { get_param: project_flavor }
+      volume_id: { get_resource: pro_vol1 }
+      volume_delete_on_termination: false
+      key: { get_param: key }
+      policyhub: { get_param: cfe_policyhub }
+      private_net: { get_param: private_net_name }
+      private_subnet: { str_replace: { params: { __subnet_prefix__: { get_param: private_net_name } }, template: __subnet_prefix__-sub } }
+      security_groups:
+        # - default
+        - { get_attr: [ security_groups, sg_ingress_ping ] }
+        - { get_attr: [ security_groups, sg_ingress_ssh ] }
+        - { get_attr: [ security_groups, sg_ingress_web ] }
+        - { get_attr: [ security_groups, sg_ingress_ballast_prinet ] }
+
+  pro_instance2:
+    depends_on: policyhub
+    type: Mod::EECS::CFEInstanceWithVol
+    properties:
+      name: { str_replace: { params: { __name_prefix__: { get_param: project_name } }, template: __name_prefix__-vm-2 } }
+      flavor: { get_param: project_flavor }
+      volume_id: { get_resource: pro_vol2 }
+      volume_delete_on_termination: false
+      key: { get_param: key }
+      policyhub: { get_param: cfe_policyhub }
+      private_net: { get_param: private_net_name }
+      private_subnet: { str_replace: { params: { __subnet_prefix__: { get_param: private_net_name } }, template: __subnet_prefix__-sub } }
+      security_groups:
+        # - default
+        - { get_attr: [ security_groups, sg_ingress_ssh_prinet ] }
+        - { get_attr: [ security_groups, sg_ingress_rdp_prinet ] }
+
+  floating_ip_pro_instance1:
+    type: Mod::EECS::FloatingIp
+    properties:
+      port: { get_attr: [pro_instance1, port] }
+      public_net: { get_param: public_net }
+
+outputs:
+  policyhub_external_ip:
+    # condition: policyhub_enabled
+    description: The public IP address to externally access cfe policyhub instance.
+    value: { get_attr: [floating_ip_policyhub, ip] }
+  policyhub_internal_ip:
+    # condition: policyhub_enabled
+    description: The private IP address to access cfe policyhub instance.
+    value: { get_attr: [policyhub, ip] }
+  policyhub_data:
+    # condition: policyhub_enabled
+    description: data values returned from policyhub wait_condition.
+    value: { get_attr: [policyhub, 'wc_data'] }
+  pro_instance1_external_ip:
+    description: The public IP address to externally access project instance 1.
+    value: { get_attr: [floating_ip_pro_instance1, ip] }
+  pro_instance1_internal_ip:
+    description: The private IP address to access project instance 1.
+    value: { get_attr: [pro_instance1, ip] }
+  pro_instance2_internal_ip:
+    description: The private IP address to access project instance 2.
+    value: { get_attr: [pro_instance2, ip] }

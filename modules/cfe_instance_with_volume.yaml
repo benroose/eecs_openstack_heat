@@ -19,7 +19,7 @@ parameters:
     type: json
     label: json format metadata
     description: metadata pushed into the instance.
-    default: []
+    default: {}
   image:
     type: string
     label: Image name or ID
@@ -52,7 +52,7 @@ parameters:
     label: Device_Name
     description: Name of device located in /dev/ on instance root directory (depreciated)
     default: vda
-  delete_on_termination:
+  volume_delete_on_termination:
     type: boolean
     label: Delete_dev_on_term
     description: Delete volume on termination of instance
@@ -106,7 +106,7 @@ parameters:
   wc_timeout:
     type: number
     description: Timeout for WaitCondition, depends on your image and environment
-    default: 1000
+    default: 500
   wc_count:
     type: number
     description: Count of total WaitCondition events
@@ -116,7 +116,7 @@ parameters:
   policyhub:
     type: string
     description: IP address of CFEngine policyhub, defaults to policyhub-dev.
-    default: 156.26.10.17
+    default: 156.26.250.43
 
 conditions:
   use_dynamic_ip: { equals: [{get_param: ip_address}, 'dynamic_ip'] }
@@ -171,7 +171,7 @@ resources:
         # - image: { get_param: image }
           boot_index: { get_param: boot_index }
           # device_name: { get_param: block_device_name }
-          delete_on_termination: { get_param: delete_on_termination }
+          delete_on_termination: { get_param: volume_delete_on_termination }
       networks:
         - port: { if: ["use_dynamic_ip", {get_resource: dynamic_ip_port}, {get_resource: fixed_ip_port}] }
       metadata: { get_param: metadata }

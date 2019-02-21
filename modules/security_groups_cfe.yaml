@@ -59,6 +59,21 @@ parameters:
     description: Standard ports used for HTTP/HTTPS
     default: "80,443"
 
+  cfe_port:
+    type: string
+    description: Standard port used for CFEngine policyhub
+    default: "5308"
+
+  ballast_port:
+    type: string
+    description: Standard port used for Ballast (SSH load-balancing)
+    default: "4411"
+
+  rdp_port:
+    type: string
+    description: Standard port used for Remote Desktop Protocol (RDP)
+    default: "3389"
+
 conditions:
 
 ## Set conditions for network access into stack instances
@@ -97,6 +112,43 @@ resources:
             protocol: tcp
             port_range_min: { get_param: ssh_port }
             port_range_max: { get_param: ssh_port }
+
+  sg_ingress_cfe_prinet:
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name: ingress cfengine priv subnet
+        description: CFEngine ingress from private network only
+        rules:
+          - remote_ip_prefix: { get_param: private_subnet_cidr }
+            protocol: tcp
+            port_range_min: { get_param: cfe_port }
+            port_range_max: { get_param: cfe_port }
+
+  sg_ingress_ballast_prinet:
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name: ingress ballast priv subnet
+        description: Ballast (SSH load-balancing) ingress from private network only
+        rules:
+          - remote_ip_prefix: { get_param: private_subnet_cidr }
+            protocol: tcp
+            port_range_min: { get_param: ballast_port }
+            port_range_max: { get_param: ballast_port }
+
+  sg_ingress_rdp_prinet:
+      type: OS::Neutron::SecurityGroup
+      properties:
+        name: ingress rdp priv subnet
+        description: Remote Desktop Protocol ingress from private network only
+        rules:
+          - remote_ip_prefix: { get_param: private_subnet_cidr }
+            protocol: tcp
+            port_range_min: { get_param: rdp_port }
+            port_range_max: { get_param: rdp_port }
+          - remote_ip_prefix: { get_param: private_subnet_cidr }
+            protocol: udp
+            port_range_min: { get_param: rdp_port }
+            port_range_max: { get_param: rdp_port }
 
 # ## DEFINE DEFAULT INTERNAL PING SECURITY GROUPS
   sg_ingress_ping:
@@ -205,3 +257,12 @@ outputs:
   sg_ingress_web:
     description: HTTP/HTTPS ingress from defined external networks
     value: { if: [external_access, {get_resource: sg_ingress_web_external}, { if: [wsu_access, {get_resource: sg_ingress_web_wsu}, {get_resource: sg_ingress_web_datacenter}] } ] }
+  sg_ingress_cfe_prinet:
+    description: CFEngine ingress from private network only
+    value: { get_resource: sg_ingress_cfe_prinet }
+  sg_ingress_ballast_prinet:
+    description: Ballast ingress from private network only
+    value: { get_resource: sg_ingress_ballast_prinet }
+  sg_ingress_rdp_prinet:
+    description: RDP ingress from private network only
+    value: { get_resource: sg_ingress_rdp_prinet }
