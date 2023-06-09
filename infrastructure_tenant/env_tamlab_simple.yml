@@ -1,0 +1,33 @@
+# Custom Parameters for EECS testing heat templates
+
+parameter_defaults:
+
+## CLUSTER PARAMS
+  cluster_access: wsu_only
+
+## USER PARAMS
+  key: osp_testing
+
+## EXISTING RESOURCES
+  image: rhel8.4
+
+## METADATA FOR INSTANCES
+#  metadata:
+
+## NETWORK PARAMS
+  public_net: public
+  private_net_name: infra-private
+  private_net_cidr: '10.10.12.0/24'
+  private_net_gateway: '10.10.12.1'
+  bastion_name: rhel-test
+  bastion_fixed_ip: 10.10.12.110
+
+resource_registry:
+  Mod::EECS::CFEInstance: ../modules/cfe_instance.yaml
+  Mod::EECS::CFEInstanceWithVol: ../modules/cfe_instance_with_volume.yaml
+  Mod::EECS::FloatingIp: ../modules/floating_ip.yaml
+  Mod::EECS::PrivateNet: ../modules/private_network.yaml
+  Mod::EECS::SecurityGroups: ../modules/security_groups.yaml
+  Mod::EECS::SecurityGroupsSSHOnly: ../modules/security_groups_ssh_only.yaml
+  Mod::EECS::SimpleInstance: ../modules/simple_instance.yaml
+  Mod::EECS::SimpleInstanceWithVol: ../modules/simple_instance_with_volume.yaml
